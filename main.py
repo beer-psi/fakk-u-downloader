@@ -11,6 +11,7 @@ from downloader import (
     COOKIES_FILE,
     ROOT_MANGA_DIR,
     MAX,
+    ZIP,
 )
 
 
@@ -87,6 +88,13 @@ def main():
         default=MAX,
         help=f"Max number of volumes to download at once \
             Set this argument if you become blocked. By default -- No limit")
+    argparser.add_argument(
+        "-n",
+        '--nozip', 
+        dest='zip', 
+        action='store_false',
+        help=f"By default this program creates a CBZ file as an output. \
+                Setting this creates a folder containing the images instead.")
     args = argparser.parse_args()
 
     file_urls = Path(args.file_urls)
@@ -112,6 +120,7 @@ def main():
         timeout=args.timeout,
         wait=args.wait,
         _max=args.max,
+        _zip=args.zip,
     )
 
     if not Path(args.cookies_file).is_file():

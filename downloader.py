@@ -13,6 +13,8 @@ from selenium.common.exceptions import TimeoutException, JavascriptException
 
 from bs4 import BeautifulSoup as bs
 from tqdm import tqdm
+import requests
+import shutil
 
 
 BASE_URL = 'https://www.fakku.net'
@@ -31,13 +33,15 @@ COOKIES_FILE = 'cookies.pickle'
 # Root directory for manga downloader
 ROOT_MANGA_DIR = 'manga'
 # Timeout to page loading in seconds
-TIMEOUT = 5
+TIMEOUT = 20
 # Wait between page loading in seconds
 WAIT = 2
 # Max manga to download in one session (-1 == no limit)
 MAX = None
 # User agent for web browser
 USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_2) AppleWebKit/601.3.9 (KHTML, like Gecko) Version/9.0.2 Safari/601.3.9'
+# Should a cbz archive file be created
+ZIP = True
 
 def program_exit():
     print('Program exit.')
@@ -63,6 +67,7 @@ class FDownloader():
             login=None,
             password=None,
             _max=MAX,
+            _zip = ZIP,
         ):
         """
         param: urls_file -- string name of .txt file with urls
@@ -99,6 +104,7 @@ class FDownloader():
         self.login = login
         self.password = password
         self.max = _max
+        self.zip = _zip
 
     def init_browser(self, headless=False):
         """
@@ -208,15 +214,32 @@ class FDownloader():
         with open(self.done_file, 'a') as done_file_obj:
             urls_processed = 0
             for url in self.urls:
+                r = requests.get(url)
+                soup = bs(r.content, 'html5lib')
+                artist = soup.select_one("a[href*=artist]")
+                artist = artist.string
+                artist = artist.strip()
+
+                title = soup.find_all("span", itemprop="name")
+                title.pop(0)
+                title = title[0].string
+                title = title.strip()
+
                 manga_name = url.split('/')[-1]
-                manga_folder = os.sep.join([self.root_manga_dir, manga_name])
+                for k in artist.split("\n"):
+                    artist = " ".join(re.findall(r"[a-zA-Z0-9]+", k))
+                for k in title.split("\n"):
+                    title = " ".join(re.findall(r"[a-zA-Z0-9]+", k))
+                folder_title = '[' + artist + '] ' + title
+                manga_folder = os.sep.join([self.root_manga_dir, folder_title])
                 if not os.path.exists(manga_folder):
                    os.mkdir(manga_folder)
 
+                self.browser.set_window_size(*self.default_display)
                 self.browser.get(url)
                 self.waiting_loading_page(is_reader_page=False)
                 page_count = self.__get_page_count(self.browser.page_source)
-                print(f'Downloading "{manga_name}" manga.')
+                print(f'Downloading "{folder_title}" manga.')
                 delay_before_fetching = True # When fetching the first page, multiple pages load and the reader slows down
 
                 for page_num in tqdm(range(1, page_count + 1)):
@@ -233,15 +256,39 @@ class FDownloader():
                     n = self.browser.execute_script("return document.getElementsByClassName('layer').length")
                     try:
                         # Resizing window size for exactly manga page size
-                        width = self.browser.execute_script(f"return document.getElementsByTagName('canvas')[{n-2}].width")
-                        height = self.browser.execute_script(f"return document.getElementsByTagName('canvas')[{n-2}].height")
+                        width = self.browser.execute_script(f"return document.getElementsByTagName('canvas')[{1}].width")
+                        height = self.browser.execute_script(f"return document.getElementsByTagName('canvas')[{1}].height")
+                        # if the height or width is too low the image is broken and we need to get it directly from the source URL
+                        if width < 500 or height < 500:
+                            img_url = self.browser.execute_script(f"return document.querySelector('.layer > img').src;")
+                            self.browser.get(img_url)
+                            # this page doesnt have dimensions in source but somehow in the title so we fetch them from there
+                            # THIS BREAKS IF ANY OF THE DIMENSIONS ARE < 1000 #FIXME
+                            window_title = self.browser.title
+                            height = window_title[-5:-1]
+                            width = window_title[-10:-6]
+                            # fake n to skip removing UI
+                            n = 69
                         self.browser.set_window_size(width, height)
                     except JavascriptException:
                         print('\nSome error with JS. Page source are note ready. You can try increase argument -t')
 
                     # Delete all UI and save page
-                    self.browser.execute_script(f"document.getElementsByClassName('layer')[{n-1}].remove()")
+                    if n == 2:
+                        self.browser.execute_script(f"document.getElementsByClassName('layer')[{0}].remove()")
+                    if n == 3:
+                        self.browser.execute_script(f"document.getElementsByClassName('layer')[{2}].remove()")
+                        self.browser.execute_script(f"document.getElementsByClassName('layer')[{0}].remove()")
                     self.browser.save_screenshot(destination_file)
+                
+                # by default create a cbz and delete the image folder after creation
+                if self.zip:
+                    archive_name = shutil.make_archive(folder_title, 'zip', manga_folder)
+                    new_archive_title = (folder_title + ".cbz")
+                    os.rename(archive_name, new_archive_title)
+                    shutil.move(new_archive_title, self.root_manga_dir)
+                    shutil.rmtree(manga_folder)
+
                 print('>> manga done!')
                 done_file_obj.write(f'{url}\n')
                 urls_processed += 1
@@ -352,6 +399,9 @@ class FDownloader():
             element = EC.presence_of_element_located((By.XPATH, elem_xpath))
             WebDriverWait(self.browser, self.timeout).until(element)
         except TimeoutException:
-            print('\nError: timed out waiting for page to load. + \
-                You can try increase param -t for more delaying.')
-            program_exit()
+            with open(self.done_file, 'a') as done_file_obj:
+                print('\nError: timed out waiting for page to load. + \
+                    You can try increase param -t for more delaying.')
+                for url in self.urls:
+                    done_file_obj.write(f'{url}\n')
+                    program_exit()
