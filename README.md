@@ -1,6 +1,7 @@
-# fakku-downloader
+forked from https://github.com/Hikot0shi/fakku-downloader/
+# jewcob-downloader
 
-Fakku-downloader - this is python script that allows download manga directly from fakku.net.
+Jewcob-downloader - this is python script that allows download manga directly from fakku.net.
 
 ### The problem
 
@@ -10,7 +11,7 @@ As far as I know, Manga reader first decodes the encrypted image and then displa
 
 ### The easiest solution
 
-In my opinion, the simplest and fastest solution for downloading manga from fakku.net is to simply open it in a browser and save a screenshot of each page. Fakku-downloader automates this process in background using headless browser.
+In my opinion, the simplest and fastest solution for downloading manga from fakku.net is to simply open it in a browser and save a screenshot of each page. Jewcob-downloader automates this process in background using headless browser.
 
 ## How to launch
 1) Download or clone this repository
@@ -32,31 +33,31 @@ In my opinion, the simplest and fastest solution for downloading manga from fakk
 
 1. After downloading the repository, chromedriver and creating urls.txt file, root folder will be like this:
 <p align="center">
-	<img src="https://github.com/Witness-senpai/fakku-downloader/blob/master/readme_png/1.PNG" width="800">
+	<img src="https://gitgud.io/combtmp-w5f08/jewcob-downloader/blob/master/readme_png/1.PNG" width="800">
 </p>
 2. Urls in urls.txt views like this:
 <p align="center">
-	<img src="https://github.com/Witness-senpai/fakku-downloader/blob/master/readme_png/2.PNG" width="800">
+	<img src="https://gitgud.io/combtmp-w5f08/jewcob-downloader/blob/master/readme_png/2.PNG" width="800">
 </p>
 3. Write the command: python main.py
 <p align="center">
-	<img src="https://github.com/Witness-senpai/fakku-downloader/blob/master/readme_png/3.PNG" width="800">
+	<img src="https://gitgud.io/combtmp-w5f08/jewcob-downloader/blob/master/readme_png/3.PNG" width="800">
 </p>
 4. If you launch program in first time, you need to login in opening browser and press enter in console. After that program save the cookies and will be use it in next runs in headless browser mode and skeep this step.
 <p align="center">
-	<img src="https://github.com/Witness-senpai/fakku-downloader/blob/master/readme_png/4.PNG" width="800">
+	<img src="https://gitgud.io/combtmp-w5f08/jewcob-downloader/blob/master/readme_png/4.PNG" width="800">
 </p>
 5. Downloading process
 <p align="center">
-	<img src="https://github.com/Witness-senpai/fakku-downloader/blob/master/readme_png/5.PNG" width="800">
+	<img src="https://gitgud.io/combtmp-w5f08/jewcob-downloader/blob/master/readme_png/5.PNG" width="800">
 </p>
 6. The program will create its own folder for each manga in urls.txt
 <p align="center">
-	<img src="https://github.com/Witness-senpai/fakku-downloader/blob/master/readme_png/6.PNG" width="800">
+	<img src="https://gitgud.io/combtmp-w5f08/jewcob-downloader/blob/master/readme_png/6.PNG" width="800">
 </p>
 7. And inside in each folder you can see the manga pages in the most affordable quality as in a browser.
 <p align="center">
-	<img src="https://github.com/Witness-senpai/fakku-downloader/blob/master/readme_png/7.PNG" width="800">
+	<img src="https://gitgud.io/combtmp-w5f08/jewcob-downloader/blob/master/readme_png/7.PNG" width="800">
 </p>
 
 ## Extra: Download URLs from a Collection
