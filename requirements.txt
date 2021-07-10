@@ -1,4 +1,6 @@
-﻿beautifulsoup4==4.8.*
-selenium==3.141.*
-tqdm==4.45.*
-requests==2.25.*
+lxml>=4.6.3
+Pillow>=8.1.2
+selenium>=4.0.0a1
+tqdm>=4.57.0
+selenium-wire>=4.3.1
+undetected-chromedriver>=2.1.2
