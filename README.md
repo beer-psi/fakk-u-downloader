@@ -1,25 +1,77 @@
 forked from https://github.com/Hikot0shi/fakku-downloader/
+
+warning tested only on https://www.fakku.net/tags/free
+
 # jewcob-downloader
 
-Jewcob-downloader - this is python script that allows download manga directly from fakku.net.
+Jewcob-downloader - this is python script that allows downloading manga directly from fakku.net.
 
-### The problem
+## The problem
 
-*Fakku.net manga reader has a good protect from download.*
+> *Fakku.net manga reader has a good protection from download.* 
 
-As far as I know, Manga reader first decodes the encrypted image and then displays it on the html canvas. This is done so tricky that I could not find a way to automate the downloading of canvas because the JS functions for this are blocked in the domain. Therefore, in order to download manga, you need to do some non-trivial actions manually. And this will have to be done separately for each page.
+- server sends scrambled image - jpg* quality 80-90 for color, png for greyscale
+- reader unscramble image and put it on html canvas - returns rgba values for each pixel
+- reader overwrites javascript methods to block downloading images from canvas
 
-### The easiest solution
+## Solution
 
-In my opinion, the simplest and fastest solution for downloading manga from fakku.net is to simply open it in a browser and save a screenshot of each page. Jewcob-downloader automates this process in background using headless browser.
+- screenshots of canvas/layer element
+
+  - pros:
+    - quick and easy - find_elements_by().screenshot()
+  
+  - cons:
+    - defaults to screenshots with the size of browser window
+    - browser.window needs to be resized to canvas size
+	- hard to tell when camvas resize ends (window.addEventListener("resize") or canvas.onresize)
+    - ends up with hardcoded wait time after resize but before screenshot
+
+- injecting javascript before evaluation of reader.min.js https://intoli.com/blog/javascript-injection/ 
+
+  - pros:
+    - quick and easy in puppeteer and pyppeteer with evaluateOnNewDocument()
+    - evaluates injected javascript code before external scripts
+  - cons:
+    - cors https://fetch.spec.whatwg.org/#http-cors-protocol https://www.w3.org/wiki/CORS_Enabled 
+    - there is no easy solution for selenium
+    - when implementing with webextension can't run headless chromium  
+    - whem implementing with proxy and html response body modification it requires selenium-wire and lxml 
+
+## Quality
+
+There is no difference in qualiy between element.screenshot and canvas.todataurl. Both returns RGBA32 PNG.  
+There is no way to get lossless unscrambled jpg from fakku scrambled source jpg image quality 80-90.  
+You can only get unscrambled bloated png with 4x or 5x the size of jpg, with the same shitty jpg quality.  
+Basically fakku is serving shitty color jpgs and most rippers are treating them as high quality lossless pngs. 
+
+## Implementation
+- open /read/page/1
+- wait for response with scrambled image
+- wait fo .loader to hide
+- wait fo notification message to hide
+- take screenshot of canvas/layer element / get todataurl
+- click() on the layer to load next image
+- repeat for all images
+
+## Changes from the fakku-downloader
+- readable json cookies instead of pickle
+- css selectors instead of bs
+- canvas toDataURL instead of screenshots
+- added js injections with selenium-wire and lxml
+- added response image downloader with selenium-wire
+- added support for spreads
+- removed not working obfuscation, used undetected-chromedriver instead
+- directory/archive and image naming schemes match rbot rips https://sukebei.nyaa.si/user/rbot2000
 
 ## How to launch
 1) Download or clone this repository
-2) Download [ChromeDriver](https://chromedriver.chromium.org/downloads) the same version as you Chrome Browser and move it in root folder.
+2) Download and install [Python](https://www.python.org/downloads/release)  version >= 3.9
+3) Download [ChromeDriver](https://chromedriver.chromium.org/downloads) the same version as you Chrome Browser and move it in root folder.
 (Rename it to **chromedriver.exe**)
-3) Create **urls.txt** file in root folder and write into that urls of manga one by line
-4) Install all requirements for script via run **install.bat** (for Windows) or run <code>pip install -r requirements.txt</code>
-5) Open root folder in command line and run the command <code>python main.py</code>
+4) Create **urls.txt** file in root folder and write into that urls of manga one by line
+5) Install all requirements for script via run **install.bat** (for Windows) or run <code>pip install -r requirements.txt</code>
+6) Open root folder in command line and run the command <code>python main.py</code>
 
 ## Some features
 * Use option -w for set wait time between loading the pages. If quality of .png is bad, or program somewhere crush its can help.
@@ -27,7 +79,9 @@ In my opinion, the simplest and fastest solution for downloading manga from fakk
 * Use option -l and -p for write the login and password from fakku.net
 * More option technical you can find via --help
 
----
+## TODOS
+
+- rewrite this script with pyppeteer and evaluateOnNewDocument
 
 ## Working example
 
