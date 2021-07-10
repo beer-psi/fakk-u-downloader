@@ -59,7 +59,6 @@ if platform == "win32":
     EXEC_PATH = "chromedriver.exe"
 else:
     EXEC_PATH = "chromedriver"
-    #EXEC_PATH = "/usr/bin/chromedriver"
 # File with manga urls
 URLS_FILE = "urls.txt"
 # File with completed urls
@@ -571,9 +570,9 @@ class JewcobDownloader:
                             self.waiting_loading_page(is_reader_page=True)
                             js_script_test = (
                                 """
-                                        var dataURL = HTMLCanvasElement.%s;
-                                        return dataURL;
-                                        """
+                                            var dataURL = HTMLCanvasElement.%s;
+                                            return dataURL;
+                                            """
                                 % js_name_todata
                             )
                             js_test = self.browser.execute_script(js_script_test)
@@ -629,9 +628,15 @@ class JewcobDownloader:
                         self.get_response_images(page_num, response_folder)
 
                     # wait untill loader hides itsefl
-                    loader = self.browser.find_element_by_class_name("loader")
                     WebDriverWait(self.browser, self.timeout).until(
                         EC.invisibility_of_element_located((By.CLASS_NAME, "loader"))
+                    )
+
+                    # wait until read notification hides
+                    WebDriverWait(self.browser, self.timeout).until(
+                        EC.invisibility_of_element_located(
+                            (By.CSS_SELECTOR, 'div[class*="ui notify-container large"]')
+                        )
                     )
 
                     img_urls = []
