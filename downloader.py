@@ -55,7 +55,11 @@ LOGIN_URL = f"{BASE_URL}/login/"
 # Initial display settings for browser. Used for grahic mode
 MAX_DISPLAY_SETTINGS = [800, 600]
 # Path to headless driver
-EXEC_PATH = "/usr/bin/chromedriver"
+if platform == "win32":
+    EXEC_PATH = "chromedriver.exe"
+else:
+    EXEC_PATH = "chromedriver"
+    #EXEC_PATH = "/usr/bin/chromedriver"
 # File with manga urls
 URLS_FILE = "urls.txt"
 # File with completed urls
