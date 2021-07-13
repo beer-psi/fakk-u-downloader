@@ -17,26 +17,22 @@ Jewcob-downloader - this is python script that allows downloading manga directly
 ## Solution
 
 - screenshots of canvas/layer element
-
   - pros:
-    - quick and easy - find_elements_by().screenshot()
-  
+    - quick and easy find_elements_by().screenshot()
   - cons:
     - defaults to screenshots with the size of browser window
     - browser.window needs to be resized to canvas size
 	- hard to tell when camvas resize ends (window.addEventListener("resize") or canvas.onresize)
     - ends up with hardcoded wait time after resize but before screenshot
-
-- injecting javascript before evaluation of reader.min.js https://intoli.com/blog/javascript-injection/ 
-
+- injecting javascript before evaluation of reader.min.js https://intoli.com/blog/javascript-injection/  
   - pros:
-    - quick and easy in puppeteer and pyppeteer with evaluateOnNewDocument()
+    - easy when using cdp, selenium execute_cdp_cmd() Page.addScriptToEvaluateOnNewDocument, puppeteer and pyppeteer evaluateOnNewDocument()
     - evaluates injected javascript code before external scripts
   - cons:
     - cors https://fetch.spec.whatwg.org/#http-cors-protocol https://www.w3.org/wiki/CORS_Enabled 
-    - there is no easy solution for selenium
-    - when implementing with webextension can't run headless chromium  
-    - whem implementing with proxy and html response body modification it requires selenium-wire and lxml 
+    - when implemented with webextension can't run headless chromium  
+    - whem implemented with proxy and html response body modification it requires selenium-wire and lxml 
+    - whem implemented with cdp prone to race conditions, often fails in selenium
 
 ## Quality
 
@@ -74,14 +70,14 @@ Basically fakku is serving shitty color jpgs and most rippers are treating them 
 6) Open root folder in command line and run the command <code>python main.py</code>
 
 ## Some features
-* Use option -w for set wait time between loading the pages. If quality of .png is bad, or program somewhere crush its can help.
-* Use option -t for set timeout for loading first page.
+* Use option -w for set wait time between loading the pages. If program somewhere crush its can help.
+* Use option -t for set timeout for loading pages.
 * Use option -l and -p for write the login and password from fakku.net
 * More option technical you can find via --help
 
 ## TODOS
 
-- rewrite this script with pyppeteer and evaluateOnNewDocument
+- probably add some tests, with free urls, both scrambled and unscrambled, spreads
 
 ## Working example
 
@@ -127,3 +123,16 @@ python main.py -z https://www.fakku.net/users/MY-USER-12345/collections/MY-COLLE
 
 This will make a **urls.txt** file with the links, then run the program as normal
 with this file as input.
+
+# Results
+
+pyppeteer rewrite  
+unstable, on every page.goto there is 50% chance of it throwing pyppeteer.errors.PageError: Page crashed!, test took 33 sec
+
+selenium using cdp  
+unstable 50% chance of addScriptToEvaluateOnNewDocument failing, slightly slower than pyppeteer, test took 37 sec
+
+selenium with selenium-wire proxy  
+stable, worked through 68 free links without an issue, slightly slower than rdp, test took 43 sec
+
+
