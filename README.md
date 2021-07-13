@@ -78,6 +78,7 @@ Basically fakku is serving shitty color jpgs and most rippers are treating them 
 ## TODOS
 
 - probably add some tests, with free urls, both scrambled and unscrambled, spreads
+- test canvas.toblob()
 
 ## Working example
 
@@ -135,4 +136,5 @@ unstable 50% chance of addScriptToEvaluateOnNewDocument failing, slightly slower
 selenium with selenium-wire proxy  
 stable, worked through 68 free links without an issue, slightly slower than rdp, test took 43 sec
 
-
+selenium using CanvasRenderingContext2D.originalgetImageData() method  
+slow, very slow, ~20 seconds to get pixels from browser and to put them back together into single rgba32 image, ~20s per image
