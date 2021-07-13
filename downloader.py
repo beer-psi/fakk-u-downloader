@@ -30,25 +30,6 @@ from tqdm import tqdm
 
 # from seleniumwire.undetected_chromedriver.v2 import Chrome, ChromeOptions
 
-"""
-instead of toDataURL and urlib.request you could use toBlob() and write bytes to disk
-
-there is also CanvasRenderingContext2D.getImageData() but it's slow:
-var ctx = canvas.getContext("2d");
-var img_data = CanvasRenderingContext2D.originalgetImageData.call(ctx, 0, 0, canvas.width, canvas.height)
-
-def chunks(data, rows=4):
-    for i in range(0, len(data), rows):
-        yield data[i: i + rows]
-
-newimdata = []
-for chunk in chunks(img_data['data']):
-    newimdata.append((chunk[0], chunk[1], chunk[2], chunk[3]))
-imd = Image.new("RGBA", (rendered_image_data_url['width'], rendered_image_data_url['height']))
-imd.putdata(newimdata)
-imd.save('sth.png')
-
-"""
 
 BASE_URL = "https://www.fakku.net"
 LOGIN_URL = f"{BASE_URL}/login/"
@@ -220,7 +201,7 @@ class JewcobDownloader:
         param: cookies_file -- string name of .picle file with cookies
             Contains binary data with cookies
         param: driver_path -- string
-            Path to the headless driver
+            Path to the browser driver
         param: default_display -- list of two int (width, height)
             Initial display settings. After loading the page, they will be changed
         param: timeout -- float
@@ -289,43 +270,17 @@ class JewcobDownloader:
         ]
         self.__set_cookies()
 
-    def __clean_cookies(self, cookies):
-        """
-        Function that removes excessive cookies
-        not used anymore
-        maybe extend cookies expiration time?
-        """
-        remove_cookies = []
-        for cookie in cookies:
-            if "name" in cookie:
-                if cookie["name"] in {"fakku_sid", "fakku_zid"}:
-                    if "expiry" in cookie:
-                        cookie["expiry"] = int(cookie["expiry"])
-                else:
-                    remove_cookies.append(cookie)
-            else:
-                remove_cookies.append(cookie)
-        for cookie in remove_cookies:
-            cookies.remove(cookie)
-        return cookies
-
     def __set_cookies(self):
-        # self.browser.set_window_size(*self.default_display)
+        """
+        Changes local storage reader options and loads cookies from json file
+        """
         self.browser.get(LOGIN_URL)
         # set fakku local storage options, like original image size or enable spreads
         self.browser.execute_script(
             "window.localStorage.setItem('fakku-twoPageMode','1');"
-        )
-        self.browser.execute_script(
             "window.localStorage.setItem('fakku-pageScalingMode','none');"
-        )
-        self.browser.execute_script(
             "window.localStorage.setItem('fakku-fitIfOverWidth','false');"
-        )
-        self.browser.execute_script(
             "window.localStorage.setItem('fakku-backgroundColor','#7F7B7B');"
-        )
-        self.browser.execute_script(
             "window.localStorage.setItem('fakku-suppressWidthFitForSpreads','false');"
         )
         with open(self.cookies_file, "rb") as f:
@@ -334,15 +289,6 @@ class JewcobDownloader:
                 if "expiry" in cookie:
                     cookie["expiry"] = int(cookie["expiry"])
                     self.browser.add_cookie(cookie)
-
-    def __init_headless_browser(self):
-        """
-        Recreating browser in headless mode(without GUI)
-        """
-        options = ChromeOptions()
-        options.headless = True
-        options.add_argument("--headless")
-        self.browser = Chrome(executable_path=self.driver_path, chrome_options=options)
 
     def __auth(self):
         """
@@ -357,10 +303,7 @@ class JewcobDownloader:
             self.browser.find_element_by_id("username").send_keys(self.login)
         if not self.password is None:
             self.browser.find_element_by_id("password").send_keys(self.password)
-        try:
-            self.browser.find_element_by_class_name("js-submit").click()
-        except:
-            self.browser.find_element_by_class_name("js-submit2").click()
+        self.browser.find_element_by_css_selector('button[class*="js-submit"]').click()
 
         ready = input("Tab Enter to continue after you login...")
         with open(self.cookies_file, "w") as f:
@@ -369,6 +312,9 @@ class JewcobDownloader:
         self.browser.quit()
 
     def interceptor(self, request, response):  # A response interceptor takes two args
+        """
+        Modifies response body by adding script tag, javascript injection
+        """
         if "fakku.net/hentai/" in request.url and "/read/page/" in request.url:
             # various checks to make sure we're only injecting the script on appropriate responses
             # we check that the content type is HTML, that the status code is 200, and that the encoding is gzip
@@ -400,9 +346,11 @@ class JewcobDownloader:
                     raise err
             # modify response body
             response.body = compress(html.tostring(parsed_html))
-        pass
 
     def get_response_images(self, img_num, save_path):
+        """
+        Saves original images sended by fakku server, scrambled and unscrambled
+        """
         while len(list(self.resp_done.values())) < int(img_num):
             all_requests = None
             while not all_requests:
@@ -441,8 +389,8 @@ class JewcobDownloader:
     def load_all(self):
         """
         Just main function
-        open main page and first gallery page click the rest
-        dumping image data from html canvas as .png
+        open main page and first reader page, click the rest
+        dumps images data urls from html canvas as .png
         """
         if not os.path.exists(self.root_manga_dir):
             os.mkdir(self.root_manga_dir)
@@ -570,9 +518,9 @@ class JewcobDownloader:
                             self.waiting_loading_page(is_reader_page=True)
                             js_script_test = (
                                 """
-                                            var dataURL = HTMLCanvasElement.%s;
-                                            return dataURL;
-                                            """
+                                                            var dataURL = HTMLCanvasElement.%s;
+                                                            return dataURL;
+                                                            """
                                 % js_name_todata
                             )
                             js_test = self.browser.execute_script(js_script_test)
@@ -766,7 +714,7 @@ class JewcobDownloader:
                         for k, v in self.resp_done.items():
                             file.write(f"{v}     {k}\n")
 
-                # by default create a cbz and delete the image folder after creation
+                # create a cbz and delete the image folder after creation
                 if self.zip:
                     archive_name = shutil.make_archive(
                         folder_title, "zip", manga_folder
