@@ -32,7 +32,7 @@ Jewcob-downloader - this is python script that allows downloading manga directly
   - cons:
     - cors https://fetch.spec.whatwg.org/#http-cors-protocol https://www.w3.org/wiki/CORS_Enabled 
     - when implemented with webextension can't run headless chromium  
-    - whem implemented with proxy and html response body modification it requires selenium-wire and lxml 
+    - whem implemented with proxy and html response body modification it requires selenium-wire 
     - whem implemented with cdp prone to race conditions, often fails in selenium
 
 ## Quality
@@ -55,7 +55,7 @@ Basically fakku is serving shitty color jpgs and most rippers are treating them 
 - readable json cookies instead of pickle
 - css selectors instead of bs
 - canvas toDataURL instead of screenshots
-- added js injections with selenium-wire and lxml
+- added js injections with selenium-wire
 - added response image downloader with selenium-wire
 - added support for spreads
 - removed not working obfuscation, used undetected-chromedriver instead
