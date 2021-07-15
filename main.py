@@ -136,7 +136,7 @@ def main():
             f"Cookies file({args.cookies_file}) are not detected. Please, "
             + "login in next step for generate cookie for next runs."
         )
-        loader.init_browser(headless=False)
+        loader.init_browser(auth=True)
     else:
         print(f"Using cookies file: {args.cookies_file}")
         loader.init_browser(headless=True)
