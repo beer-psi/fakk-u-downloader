@@ -13,9 +13,6 @@ from time import sleep
 
 from PIL import Image
 
-# I could drop lxml and use sth lighter, probably
-from lxml import html
-from lxml.html import builder
 from selenium.common.exceptions import (
     JavascriptException,
     NoSuchElementException,
@@ -64,8 +61,8 @@ ZIP = False
 js_name_todata = "".join(
     secrets.choice(string.ascii_letters + string.digits) for _ in range(10)
 )
-js_script = """
-var s = document.createElement('script');
+js_script_in = """
+<script>var s = document.createElement('script');
 s.type = 'text/javascript';
 var code = "HTMLCanvasElement.%s = HTMLCanvasElement.prototype.toDataURL;";
 try {
@@ -77,12 +74,11 @@ s.onload = function() {
     this.remove();
 };
 (document.body || document.documentElement).appendChild(s);
-(document.head || document.documentElement).appendChild(s);
+(document.head || document.documentElement).appendChild(s);</script>
 """ % (
     js_name_todata,
 )
-script_elem_to_inject = builder.SCRIPT(js_script)
-
+js_script_in = js_script_in.encode()
 
 def program_exit():
     print("Program exit.")
@@ -247,6 +243,12 @@ class JewcobDownloader:
         # set options to avoid cors and other bullshit
         options.add_argument(f"disable-web-security")
 
+        #options.add_argument(f'no-sandbox') #fix2
+        #options.add_argument(f'disable-setuid-sandbox') #fix2
+        #options.add_argument(f'disable') #fix2
+        #options.add_argument(f'disable-logging') #fix2
+        #options.add_experimental_option("excludeSwitches", ["enable-logging"]) # fix1
+
         self.browser = Chrome(
             executable_path=self.driver_path,
             chrome_options=options,
@@ -321,14 +323,12 @@ class JewcobDownloader:
                 print(response.headers)
                 print(request.url)
                 return None
-            parsed_html = html.fromstring(decompress(response.body))
-            # injecting js
-            try:
-                parsed_html.head.insert(0, script_elem_to_inject)
-            except IndexError as err:
-                parsed_html.body.insert(0, script_elem_to_inject)
             # modify response body
-            response.body = compress(html.tostring(parsed_html))
+            parsed_html = decompress(response.body)
+            f = b'<head>'
+            h_index = parsed_html.find(f) + len(f)
+            html2 =  parsed_html[:h_index] + js_script_in + parsed_html[h_index:]
+            response.body = compress(html2)
 
     def get_response_images(self, img_num, save_path):
         """
