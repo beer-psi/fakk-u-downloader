@@ -4,10 +4,9 @@ import re
 import secrets
 import shutil
 import string
-import urllib.request
+from binascii import a2b_base64
 from collections import OrderedDict
 from gzip import compress, decompress
-from io import BytesIO
 from pickle import UnpicklingError
 from sys import platform
 from time import sleep
@@ -20,6 +19,7 @@ from lxml.html import builder
 from selenium.common.exceptions import (
     JavascriptException,
     NoSuchElementException,
+    StaleElementReferenceException,
     TimeoutException,
 )
 from selenium.webdriver.common.by import By
@@ -29,7 +29,6 @@ from seleniumwire.undetected_chromedriver import Chrome, ChromeOptions
 from tqdm import tqdm
 
 # from seleniumwire.undetected_chromedriver.v2 import Chrome, ChromeOptions
-
 
 BASE_URL = "https://www.fakku.net"
 LOGIN_URL = f"{BASE_URL}/login/"
@@ -61,17 +60,14 @@ USER_AGENT = None
 # Should a cbz archive file be created
 ZIP = False
 
-# create script tag in html body/head
+# create script tag to put in html body/head
 js_name_todata = "".join(
-    secrets.choice(string.ascii_letters + string.digits) for _ in range(10)
-)
-js_name_getetag = "".join(
     secrets.choice(string.ascii_letters + string.digits) for _ in range(10)
 )
 js_script = """
 var s = document.createElement('script');
 s.type = 'text/javascript';
-var code = "HTMLCanvasElement.%s = HTMLCanvasElement.prototype.toDataURL;Document.%s = Document.prototype.getElementsByTagName;";
+var code = "HTMLCanvasElement.%s = HTMLCanvasElement.prototype.toDataURL;";
 try {
       s.appendChild(document.createTextNode(code));
     } catch (e) {
@@ -84,7 +80,6 @@ s.onload = function() {
 (document.head || document.documentElement).appendChild(s);
 """ % (
     js_name_todata,
-    js_name_getetag,
 )
 script_elem_to_inject = builder.SCRIPT(js_script)
 
@@ -229,39 +224,35 @@ class JewcobDownloader:
         self.max = _max
         self.zip = _zip
 
-    def init_browser(self, headless=False):
+    def init_browser(self, auth=False, headless=True):
         """
         Initializing browser and authenticate if necessary
         Obfuscation with undetected-chromedriver
         ---------------------
+        param: auth -- bool
+            If True: launch browser with GUI (for first time authentication)
+            If False: skip authentication
         param: headless -- bool
-            If True: launch browser in headless mode(for download manga)
-            If False: launch usually browser with GUI(for first authenticate)
+            If True: launch browser in headless mode
+            If False: launch browser with GUI
         """
-        if not headless:
+        if auth:
             self.__auth()
-            headless = True
         options = ChromeOptions()
         if headless:
             options.headless = True
             options.add_argument("--headless")
+        else:
+            options.headless = False
         # set options to avoid cors and other bullshit
-        # options.add_argument(f'user-agent={USER_AGENT}')
-        # options.add_argument(f'no-sandbox')
-        # options.add_argument(f'disable-setuid-sandbox')
         options.add_argument(f"disable-web-security")
-
-        # caps = webdriver.DesiredCapabilities.CHROME.copy()
-        # caps['pageLoadStrategy'] = 'eager'
 
         self.browser = Chrome(
             executable_path=self.driver_path,
             chrome_options=options,
-            # desired_capabilities=caps,
         )
         if not headless:
             self.browser.set_window_size(*self.default_display)
-        # self.browser.header_overrides = {'disable_encoding': 'True'}
         self.browser.header_overrides = {"Accept-Encoding": "gzip"}
         self.browser.response_interceptor = self.interceptor
         self.browser.scopes = [
@@ -275,6 +266,7 @@ class JewcobDownloader:
         Changes local storage reader options and loads cookies from json file
         """
         self.browser.get(LOGIN_URL)
+        self.waiting_loading_page(is_reader_page=False)
         # set fakku local storage options, like original image size or enable spreads
         self.browser.execute_script(
             "window.localStorage.setItem('fakku-twoPageMode','1');"
@@ -329,21 +321,12 @@ class JewcobDownloader:
                 print(response.headers)
                 print(request.url)
                 return None
-            try:
-                parsed_html = html.fromstring(decompress(response.body))
-            except Exception as err:
-                print(err)
-                raise err
+            parsed_html = html.fromstring(decompress(response.body))
             # injecting js
             try:
                 parsed_html.head.insert(0, script_elem_to_inject)
-            except Exception as err:
-                print(err)
-                try:
-                    parsed_html.head.insert(0, script_elem_to_inject)
-                except Exception as err:
-                    print(err)
-                    raise err
+            except IndexError as err:
+                parsed_html.body.insert(0, script_elem_to_inject)
             # modify response body
             response.body = compress(html.tostring(parsed_html))
 
@@ -362,16 +345,11 @@ class JewcobDownloader:
                     sleep(self.wait)
                 except FileNotFoundError:
                     sleep(self.wait)
-                except Exception as err:
-                    print(err)
-                    raise err
             for request in all_requests:
                 if request.response:
                     if request.url.startswith("https://books.fakku.net/images/manga"):
                         if request.url not in self.resp_done:
-                            # print(request.url)
                             resp_file_name = request.url.split("/")[-1]
-                            # print(request.response.headers)
                             resp_file_type = request.response.headers[
                                 "Content-Type"
                             ].split("/")[-1]
@@ -406,13 +384,16 @@ class JewcobDownloader:
         window_size = (
             self.browser.get_window_size()
         )  # in headless mode viewport size == window size, default 800x600
-        # print(self.browser.get_window_size())
-        # print(self.browser.execute_script("return navigator.userAgent;"))
         ignore_size.add((window_size["width"], window_size["height"]))
 
         with open(self.done_file, "a") as done_file_obj:
             urls_processed = 0
             for url in self.urls:
+                if "fakku.net/anime/" in url or "fakku.net/games/" in url:
+                    print(f"{url.split('fakku.net/')[-1].split('/')[0]}: {url}")
+                    urls_processed += 1
+                    continue
+
                 print(url)
                 self.timeout = TIMEOUT
                 self.wait = WAIT
@@ -434,25 +415,11 @@ class JewcobDownloader:
                         "a.button.icon.green"
                     )
                     if "Start Reading" not in bt.text:
-                        if "Read With FAKKU Unlimited" in bt.text:
-                            print("Subscription", url)
-                            urls_processed += 1
-                            continue
-                        else:
-                            # todo need to catch some more variations of green button text
-                            print(url)
-                            print(bt)
-                            urls_processed += 1
-                            continue
-                except Exception as err:
-                    print(err)
-                    print(url)
-                    print(
-                        """
-                    There was a problem.
-                    You do not have access to this content.
-                    """
-                    )
+                        print(f"{bt.text}: {url}")
+                        urls_processed += 1
+                        continue
+                except NoSuchElementException as err:
+                    print(f"No green button: {url}")
                     urls_processed += 1
                     continue
 
@@ -512,24 +479,35 @@ class JewcobDownloader:
                 while page_num <= page_count:
                     if page_num == 1:
                         # injection test
-                        js_test = None
-                        while type(js_test) is not dict:
-                            self.browser.get(f"{url}/read/page/{page_num}")
+                        js_test = False
+                        self.browser.get(f"{url}/read/page/{page_num}")
+                        while not js_test:
                             self.waiting_loading_page(is_reader_page=True)
                             js_script_test = (
                                 """
-                                                            var dataURL = HTMLCanvasElement.%s;
-                                                            return dataURL;
-                                                            """
+                                                                    var dataURL = HTMLCanvasElement.%s;
+                                                                    return dataURL;
+                                                                    """
                                 % js_name_todata
                             )
-                            js_test = self.browser.execute_script(js_script_test)
-                            self.wait += 1
+                            try:
+                                js_test = self.browser.execute_script(js_script_test)
+                                # js_test result should be empty dict {}
+                                if type(js_test) is dict:
+                                    js_test = True
+                                else:
+                                    js_test = False
+                                    print("retry")
+                                    self.browser.get(f"{url}/read/page/{page_num}")
+                            except JavascriptException:
+                                pass
                             sleep(self.wait)
+
                     else:
-                        layers = self.browser.find_elements_by_class_name("layer")
-                        layer = layers[-1]
-                        layer.click()
+                        ui = self.browser.find_element_by_css_selector(
+                            'div.layer[data-name="UI"]'
+                        )
+                        ui.click()
 
                     # get first page response image
                     self.get_response_images(page_num, response_folder)
@@ -538,39 +516,32 @@ class JewcobDownloader:
                     spread = False
                     first_spread = False
                     second_spread = False
-                    try:
-                        page_js_page = self.browser.find_element_by_css_selector(
-                            ".page.js-page"
-                        )
-                        divider = self.browser.find_element_by_css_selector(
-                            ".divider.js-divider"
-                        )
-                        count_js_count = self.browser.find_element_by_css_selector(
-                            ".count.js-count"
-                        )
-                        divider = divider.get_property("innerHTML")
-                        if divider == "-":
-                            spread = True
-                            first_spread = page_js_page.get_property("innerHTML")
-                            first_spread = int(first_spread)
-                            second_spread = count_js_count.get_property("innerHTML")
-                            second_spread = int(second_spread)
-                            pages = [first_spread, second_spread]
-                        else:
-                            page_count_3 = count_js_count.get_property("innerHTML")
-                            page_count_3 = int(page_count_3)
-                            if page_count_3 != page_count:
-                                page_count = page_count_3
-                                progress_bar.total = page_count
-                                progress_bar.refresh()
-                            pages = [page_num]
-                        # print(drawer.get_property("children"))
-                    except Exception as err:
-                        print("Catch this error")
-                        print(err)
-                        raise err
+                    page_js_page = self.browser.find_element_by_css_selector(
+                        ".page.js-page"
+                    )
+                    divider = self.browser.find_element_by_css_selector(
+                        ".divider.js-divider"
+                    )
+                    count_js_count = self.browser.find_element_by_css_selector(
+                        ".count.js-count"
+                    )
+                    divider = divider.get_property("innerHTML")
+                    if divider == "-":
+                        spread = True
+                        first_spread = page_js_page.get_property("innerHTML")
+                        first_spread = int(first_spread)
+                        second_spread = count_js_count.get_property("innerHTML")
+                        second_spread = int(second_spread)
+                        pages = [first_spread, second_spread]
+                    else:
+                        page_count_3 = count_js_count.get_property("innerHTML")
+                        page_count_3 = int(page_count_3)
+                        if page_count_3 != page_count:
+                            page_count = page_count_3
+                            progress_bar.total = page_count
+                            progress_bar.refresh()
+                        pages = [page_num]
 
-                    # print(pages)
                     for page_num in pages:
                         # get next page response image
                         self.get_response_images(page_num, response_folder)
@@ -587,105 +558,98 @@ class JewcobDownloader:
                         )
                     )
 
-                    img_urls = []
                     canvas_found = []
+                    images_found = []
+
+                    # parsing PageView layer for canvas/images
+                    while len(canvas_found) != len(pages) and len(images_found) != len(
+                        pages
+                    ):
+                        try:
+                            page_view = self.browser.find_element_by_css_selector(
+                                'div.layer[data-name="PageView"]'
+                            )
+                            images_canvas = page_view.find_elements_by_css_selector(
+                                "canvas"
+                            )
+                            if len(images_canvas) > 0:
+                                for canvas in images_canvas:
+                                    widthc = canvas.size["width"]
+                                    heightc = canvas.size["height"]
+                                    if (widthc, heightc) not in ignore_size:
+                                        canvas_found.append(canvas)
+                                        if len(canvas_found) == len(pages):
+                                            break
+                            else:
+                                images = page_view.find_elements_by_css_selector("img")
+                                for img_url in images:
+                                    img_url = img_url.get_attribute("src")
+                                    if img_url:
+                                        if img_url in self.resp_done:
+                                            images_found.append(img_url)
+                                        elif "/thumbs/" in img_url:
+                                            pass
+                                        else:
+                                            print(img_url)
+                                            print("Issue when image not in response")
+                        except StaleElementReferenceException as err:
+                            pass
+                        sleep(self.wait)
+
                     fin_img = []
 
-                    try:
-                        img_urls = self.browser.find_elements_by_class_name("page")
-                        for img_url in img_urls:
-                            img_url = img_url.get_attribute("src")
-                            if img_url:
-                                if img_url in self.resp_done:
-                                    canvas_found.append(img_url)
-                                elif "/thumbs/" in img_url:
-                                    pass
-                                else:
-                                    print(img_url)
-                                    print("Issue when image not in response")
-                    except Exception as err:
-                        print(err)
-                    done = 0
-
                     # copy image from server response
-                    for img_url in canvas_found:
-                        done = False
-                        shutil.copy(self.resp_done[img_url], manga_abs_path)
-                        fin_path = os.path.join(
-                            manga_abs_path, self.resp_done[img_url].split("/")[-1]
+                    for img_url, page_num in zip(images_found, pages):
+                        ext = self.resp_done[img_url].split(".")[-1]
+                        destination_file = os.sep.join(
+                            [manga_abs_path, f"{page_num:02d}.{ext}"]
                         )
-                        # print(fin_path)
-                        fin_img.append(fin_path)
-                        done += 1
+                        if spread:
+                            if pages.index(page_num) == 0:
+                                destination_file = os.sep.join(
+                                    [manga_abs_path, f"{page_num:02d}b.{ext}"]
+                                )
+                            elif pages.index(page_num) == 1:
+                                destination_file = os.sep.join(
+                                    [manga_abs_path, f"{page_num:02d}c.{ext}"]
+                                )
+                        shutil.copy(self.resp_done[img_url], destination_file)
+                        fin_img.append(destination_file)
                         progress_bar.update(1)
 
-                    if done < len(pages):
-                        # get all images from canvas
-                        while len(canvas_found) != len(pages):
-                            c = 0
-                            for canvas in self.browser.find_elements_by_tag_name(
-                                "canvas"
-                            ):
-                                widthc = canvas.size["width"]
-                                heightc = canvas.size["height"]
-                                # print(widthc, heightc)
-                                # print(ignore_size)
-                                if (widthc, heightc) not in ignore_size:
-                                    canvas_found.append(c)
-                                    if len(canvas_found) == len(pages):
-                                        break
-                                c += 1
-                            sleep(self.wait)
-
-                        for c, page_num in zip(canvas_found, pages):
-                            destination_file = os.sep.join(
-                                [manga_abs_path, f"{page_num:02d}.png"]
-                            )
-                            if spread:
-                                if pages.index(page_num) == 0:
-                                    destination_file = os.sep.join(
-                                        [manga_abs_path, f"{page_num:02d}b.png"]
-                                    )
-                                elif pages.index(page_num) == 1:
-                                    destination_file = os.sep.join(
-                                        [manga_abs_path, f"{page_num:02d}c.png"]
-                                    )
-
-                            js_script = f"""
-                            var canvas = Document.%s.call(document, 'canvas')[{c}];
-                            var dataURL = HTMLCanvasElement.%s.call(canvas, \"image/png\");
-                            return dataURL;
-                            """ % (
-                                js_name_getetag,
-                                js_name_todata,
-                            )
-                            # print(js_script)
-                            try:
-                                rendered_image_data_url = self.browser.execute_script(
-                                    js_script
+                    # get all images from canvas
+                    for c, page_num in zip(canvas_found, pages):
+                        destination_file = os.sep.join(
+                            [manga_abs_path, f"{page_num:02d}.png"]
+                        )
+                        if spread:
+                            if pages.index(page_num) == 0:
+                                destination_file = os.sep.join(
+                                    [manga_abs_path, f"{page_num:02d}b.png"]
                                 )
-                            except JavascriptException as err:
-                                print(c)
-                                print(c)
-                                print(c)
-                                print(err)
-                                raise err
+                            elif pages.index(page_num) == 1:
+                                destination_file = os.sep.join(
+                                    [manga_abs_path, f"{page_num:02d}c.png"]
+                                )
 
-                            response = urllib.request.urlopen(rendered_image_data_url)
-                            response_data = response.file.read()
-                            im = Image.open(BytesIO(response_data))
-                            if im.size in {(300, 150), (1, 1)}:
-                                print(c, page_num)
-                                print(page_num)
-                                print(url)
-                                print("Probably check it manually")
-                                program_exit()
+                        js_script = f"""
+                        var dataURL = HTMLCanvasElement.%s.call(arguments[0], \"image/png\");
+                        return dataURL;
+                        """ % (
+                            js_name_todata,
+                        )
+                        rendered_image_data_url = self.browser.execute_script(
+                            js_script, c
+                        )
 
-                            with open(destination_file, "wb") as f:
-                                f.write(response_data)
-                            fin_img.append(destination_file)
-                            done += 1
-                            progress_bar.update(1)
+                        response_data = a2b_base64(
+                            rendered_image_data_url.split(",")[1]
+                        )
+
+                        with open(destination_file, "wb") as f:
+                            f.write(response_data)
+                        fin_img.append(destination_file)
+                        progress_bar.update(1)
 
                     if spread:
                         nam1 = fin_img[0].split("/")[-1].split(".")[0][:-1]
@@ -698,7 +662,6 @@ class JewcobDownloader:
                             fin_img, direction="horizontal", aligment="none"
                         )
                         combo.save(destination_file_spread)
-                        # print(destination_file_spread)
 
                     page_num += 1
                     sleep(self.wait)
@@ -742,6 +705,7 @@ class JewcobDownloader:
                 if (
                     page_num != 1
                 ):  # Fencepost problem, the first page of a collection is already loaded
+                    print(f"{collection_url}/page/{page_num}")
                     self.browser.get(f"{collection_url}/page/{page_num}")
                     self.waiting_loading_page(is_reader_page=False)
 
@@ -750,18 +714,18 @@ class JewcobDownloader:
                         "a.book-title"
                     )
                     for a in all_pages_book:
-                        href = a["href"]
-                        f.write(f"{BASE_URL}{href}\n")
-                except NoSuchElementException:
+                        href = a.get_attribute("href")
+                        f.write(f"{href}\n")
+                except NoSuchElementException as err:
                     pass
                 try:
                     all_pages_content = self.browser.find_elements_by_css_selector(
                         "a.content-title"
                     )
                     for a in all_pages_content:
-                        href = a["href"]
-                        f.write(f"{BASE_URL}{href}\n")
-                except NoSuchElementException:
+                        href = a.get_attribute("href")
+                        f.write(f"{href}\n")
+                except NoSuchElementException as err:
                     pass
 
     def __get_page_count(self):
@@ -774,11 +738,12 @@ class JewcobDownloader:
             Number of manga pages
         """
         page_count = None
-        divs = self.browser.find_elements_by_class_name("row-right")
-        for div in divs:
-            if div.text.endswith(" pages") or div.text.endswith(" page"):
-                page_count = int(div.text.split(" ")[0])
-                break
+        while not page_count:
+            divs = self.browser.find_elements_by_class_name("row-right")
+            for div in divs:
+                if div.text.endswith(" pages") or div.text.endswith(" page"):
+                    page_count = int(div.text.split(" ")[0])
+            sleep(self.wait)
         return page_count
 
     def __get_page_count_in_collection(self):
@@ -791,17 +756,16 @@ class JewcobDownloader:
             Number of collection pages
         """
         page_count = None
-        try:
-            pagination = self.browser.find_element_by_class_name("pagination-meta")
-            pagination_text = pagination.text
-            page_count = int(
-                re.search(r"Page\s+\d+\s+of\s+(\d+)", pagination_text).group(1)
-            )
-        except NoSuchElementException:
-            pass
-        except Exception as err:
-            print(err)
-            raise err
+        while not page_count:
+            try:
+                pagination = self.browser.find_element_by_class_name("pagination-meta")
+                pagination_text = pagination.text
+                page_count = int(
+                    re.search(r"Page\s+\d+\s+of\s+(\d+)", pagination_text).group(1)
+                )
+            except NoSuchElementException:
+                pass
+            sleep(self.wait)
 
         return page_count
 
@@ -842,7 +806,6 @@ class JewcobDownloader:
         else:
             elem_xpath = "//div[@data-name='PageView']"
         elm_found = False
-        # FAKKU is temporarily down for maintenance.
         while not elm_found:
             try:
                 element = EC.presence_of_element_located((By.XPATH, elem_xpath))
@@ -854,14 +817,11 @@ class JewcobDownloader:
                     if "FAKKU is temporarily down for maintenance." in title:
                         print("FAKKU is temporarily down for maintenance.")
                         program_exit()
-                except Exception as err2:
-                    print(err2)
+                except NoSuchElementException as err2:
+                    pass
                 print(
                     "\nError: timed out waiting for page to load. Timeout increased +10 for more delaying."
                 )
                 self.timeout += 10
                 self.browser.refresh()
-            except Exception as err:
-                print(err)
-                raise err
             sleep(self.wait)
