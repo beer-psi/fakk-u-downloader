@@ -3,6 +3,9 @@ especially if you had ERROR:device_event_log_impl.cc(214)] before
 fakku account reqired  
 just run main.exe, main_fix1.exe and main_fix2.exe and post results
 
+Download [ChromeDriver](https://chromedriver.chromium.org/downloads) the same version as you Chrome Browser and move it in root folder. (directory with main.exe and urls.txt)  
+Rename it to chromedriver.exe
+
 sha512   
 main.exe  
 9160b6c1ccaf85505fa37eda51a1e220adc90cbd01602937b0874982612ec68d5fe09d1ee974524725db92bab57d6d78a5553b05d8712808ca188b08f173643a  
