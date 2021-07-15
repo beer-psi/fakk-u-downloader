@@ -1,6 +1,7 @@
 forked from https://github.com/Hikot0shi/fakku-downloader/
 
-warning tested only on https://www.fakku.net/tags/free
+warning tested only on https://www.fakku.net/tags/free  
+63 works downloaded without an issue (subscription, games, anime skipped)
 
 # jewcob-downloader
 
@@ -78,7 +79,6 @@ Basically fakku is serving shitty color jpgs and most rippers are treating them 
 ## TODOS
 
 - probably add some tests, with free urls, both scrambled and unscrambled, spreads
-- test canvas.toblob()
 
 ## Working example
 
@@ -138,3 +138,15 @@ stable, worked through 68 free links without an issue, slightly slower than rdp,
 
 selenium using CanvasRenderingContext2D.originalgetImageData() method  
 slow, very slow, ~20 seconds to get pixels from browser and to put them back together into single rgba32 image, ~20s per image
+
+canvas.toblob() can't save files outside of browser download location
+
+# Extra2: Enable controversial content
+
+https://archived.moe/h/thread/6271290/#6289883  
+https://archiveofsins.com/h/thread/6271290/#6289883  
+
+> 1. Go to https://www.fakku.net/account/preferences
+> 2. Open the browser console (F12)
+> 3. Paste this into the console and press enter:  
+> $("form.js-start-disabled-button").first().append($('<input type="hidden" name="content_controversial" value="1" />')).find("button[type=submit]").attr("disabled", false).click();
