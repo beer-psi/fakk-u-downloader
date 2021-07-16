@@ -12,7 +12,6 @@ from sys import platform
 from time import sleep
 
 from PIL import Image
-
 from selenium.common.exceptions import (
     JavascriptException,
     NoSuchElementException,
@@ -79,6 +78,7 @@ s.onload = function() {
     js_name_todata,
 )
 js_script_in = js_script_in.encode()
+
 
 def program_exit():
     print("Program exit.")
@@ -241,13 +241,13 @@ class JewcobDownloader:
         else:
             options.headless = False
         # set options to avoid cors and other bullshit
-        options.add_argument(f"disable-web-security")
+        options.add_argument("disable-web-security")
 
-        #options.add_argument(f'no-sandbox') #fix2
-        #options.add_argument(f'disable-setuid-sandbox') #fix2
-        #options.add_argument(f'disable') #fix2
-        #options.add_argument(f'disable-logging') #fix2
-        #options.add_experimental_option("excludeSwitches", ["enable-logging"]) # fix1
+        # options.add_argument('no-sandbox') #fix2
+        # options.add_argument('disable-setuid-sandbox') #fix2
+        # options.add_argument('disable') #fix2
+        # options.add_argument('disable-logging') #fix2
+        # options.add_experimental_option("excludeSwitches", ["enable-logging"]) # fix1
 
         self.browser = Chrome(
             executable_path=self.driver_path,
@@ -294,10 +294,10 @@ class JewcobDownloader:
         self.browser.set_window_size(*self.default_display)
         self.browser.get(LOGIN_URL)
         if not self.login is None:
-            self.browser.find_element_by_id("username").send_keys(self.login)
+            self.browser.find_element(By.ID, "username").send_keys(self.login)
         if not self.password is None:
-            self.browser.find_element_by_id("password").send_keys(self.password)
-        self.browser.find_element_by_css_selector('button[class*="js-submit"]').click()
+            self.browser.find_element(By.ID, "password").send_keys(self.password)
+        self.browser.find_element(By.CSS_SELECTOR, 'button[class*="js-submit"]').click()
 
         ready = input("Tab Enter to continue after you login...")
         with open(self.cookies_file, "w") as f:
@@ -325,9 +325,9 @@ class JewcobDownloader:
                 return None
             # modify response body
             parsed_html = decompress(response.body)
-            f = b'<head>'
+            f = b"<head>"
             h_index = parsed_html.find(f) + len(f)
-            html2 =  parsed_html[:h_index] + js_script_in + parsed_html[h_index:]
+            html2 = parsed_html[:h_index] + js_script_in + parsed_html[h_index:]
             response.body = compress(html2)
 
     def get_response_images(self, img_num, save_path):
@@ -402,8 +402,8 @@ class JewcobDownloader:
                 self.waiting_loading_page(is_reader_page=False)
                 page_count = self.__get_page_count()
                 try:
-                    login_check = self.browser.find_element_by_css_selector(
-                        "div.my-account.header-drop-down"
+                    login_check = self.browser.find_element(
+                        By.CSS_SELECTOR, "div.my-account.header-drop-down"
                     )
                 except:
                     print("Remove cookies.json and try again")
@@ -411,8 +411,8 @@ class JewcobDownloader:
 
                 # green button under thumbnail
                 try:
-                    bt = self.browser.find_element_by_css_selector(
-                        "a.button.icon.green"
+                    bt = self.browser.find_element(
+                        By.CSS_SELECTOR, "a.button.icon.green"
                     )
                     if "Start Reading" not in bt.text:
                         print(f"{bt.text}: {url}")
@@ -423,8 +423,8 @@ class JewcobDownloader:
                     urls_processed += 1
                     continue
 
-                artist = self.browser.find_element_by_css_selector("a[href*=artist]")
-                artist = artist.find_element_by_xpath("./..")
+                artist = self.browser.find_element(By.CSS_SELECTOR, "a[href*=artist]")
+                artist = artist.find_element(By.XPATH, "./..")
                 artist = fix_filename(artist.text)
 
                 self.resp_done = OrderedDict()
@@ -432,23 +432,23 @@ class JewcobDownloader:
                 resized_to_response = False
                 cropped = False
 
-                title = self.browser.find_element_by_tag_name("h1")
+                title = self.browser.find_element(By.TAG_NAME, "h1")
                 title = fix_filename(title.text)
 
                 try:
-                    circle = self.browser.find_element_by_css_selector(
-                        "a[href*=circles]"
+                    circle = self.browser.find_element(
+                        By.CSS_SELECTOR, "a[href*=circles]"
                     )
-                    circle = circle.find_element_by_xpath("./..")
+                    circle = circle.find_element(By.XPATH, "./..")
                     circle = fix_filename(circle.text)
                 except NoSuchElementException:
                     circle = None
 
                 try:
-                    extra = self.browser.find_element_by_css_selector(
-                        "a[href*=magazines]"
+                    extra = self.browser.find_element(
+                        By.CSS_SELECTOR, "a[href*=magazines]"
                     )
-                    extra = extra.find_element_by_xpath("./..")
+                    extra = extra.find_element(By.XPATH, "./..")
                     extra = fix_filename(extra.text)
                     extra = f" ({extra})"
                 except NoSuchElementException:
@@ -485,9 +485,9 @@ class JewcobDownloader:
                             self.waiting_loading_page(is_reader_page=True)
                             js_script_test = (
                                 """
-                                                                    var dataURL = HTMLCanvasElement.%s;
-                                                                    return dataURL;
-                                                                    """
+                                                                        var dataURL = HTMLCanvasElement.%s;
+                                                                        return dataURL;
+                                                                        """
                                 % js_name_todata
                             )
                             try:
@@ -504,8 +504,8 @@ class JewcobDownloader:
                             sleep(self.wait)
 
                     else:
-                        ui = self.browser.find_element_by_css_selector(
-                            'div.layer[data-name="UI"]'
+                        ui = self.browser.find_element(
+                            By.CSS_SELECTOR, 'div.layer[data-name="UI"]'
                         )
                         ui.click()
 
@@ -516,14 +516,14 @@ class JewcobDownloader:
                     spread = False
                     first_spread = False
                     second_spread = False
-                    page_js_page = self.browser.find_element_by_css_selector(
-                        ".page.js-page"
+                    page_js_page = self.browser.find_element(
+                        By.CSS_SELECTOR, ".page.js-page"
                     )
-                    divider = self.browser.find_element_by_css_selector(
-                        ".divider.js-divider"
+                    divider = self.browser.find_element(
+                        By.CSS_SELECTOR, ".divider.js-divider"
                     )
-                    count_js_count = self.browser.find_element_by_css_selector(
-                        ".count.js-count"
+                    count_js_count = self.browser.find_element(
+                        By.CSS_SELECTOR, ".count.js-count"
                     )
                     divider = divider.get_property("innerHTML")
                     if divider == "-":
@@ -566,11 +566,11 @@ class JewcobDownloader:
                         pages
                     ):
                         try:
-                            page_view = self.browser.find_element_by_css_selector(
-                                'div.layer[data-name="PageView"]'
+                            page_view = self.browser.find_element(
+                                By.CSS_SELECTOR, 'div.layer[data-name="PageView"]'
                             )
-                            images_canvas = page_view.find_elements_by_css_selector(
-                                "canvas"
+                            images_canvas = page_view.find_elements(
+                                By.CSS_SELECTOR, "canvas"
                             )
                             if len(images_canvas) > 0:
                                 for canvas in images_canvas:
@@ -581,7 +581,7 @@ class JewcobDownloader:
                                         if len(canvas_found) == len(pages):
                                             break
                             else:
-                                images = page_view.find_elements_by_css_selector("img")
+                                images = page_view.find_elements(By.CSS_SELECTOR, "img")
                                 for img_url in images:
                                     img_url = img_url.get_attribute("src")
                                     if img_url:
@@ -710,8 +710,8 @@ class JewcobDownloader:
                     self.waiting_loading_page(is_reader_page=False)
 
                 try:
-                    all_pages_book = self.browser.find_elements_by_css_selector(
-                        "a.book-title"
+                    all_pages_book = self.browser.find_elements(
+                        By.CSS_SELECTOR, "a.book-title"
                     )
                     for a in all_pages_book:
                         href = a.get_attribute("href")
@@ -719,8 +719,8 @@ class JewcobDownloader:
                 except NoSuchElementException as err:
                     pass
                 try:
-                    all_pages_content = self.browser.find_elements_by_css_selector(
-                        "a.content-title"
+                    all_pages_content = self.browser.find_elements(
+                        By.CSS_SELECTOR, "a.content-title"
                     )
                     for a in all_pages_content:
                         href = a.get_attribute("href")
@@ -739,7 +739,7 @@ class JewcobDownloader:
         """
         page_count = None
         while not page_count:
-            divs = self.browser.find_elements_by_class_name("row-right")
+            divs = self.browser.find_elements(By.CLASS_NAME, "row-right")
             for div in divs:
                 if div.text.endswith(" pages") or div.text.endswith(" page"):
                     page_count = int(div.text.split(" ")[0])
@@ -758,7 +758,7 @@ class JewcobDownloader:
         page_count = None
         while not page_count:
             try:
-                pagination = self.browser.find_element_by_class_name("pagination-meta")
+                pagination = self.browser.find_element(By.CLASS_NAME, "pagination-meta")
                 pagination_text = pagination.text
                 page_count = int(
                     re.search(r"Page\s+\d+\s+of\s+(\d+)", pagination_text).group(1)
@@ -812,7 +812,7 @@ class JewcobDownloader:
                 elm_found = WebDriverWait(self.browser, self.timeout).until(element)
             except TimeoutException as err:
                 try:
-                    title = self.browser.find_element_by_tag_name("h1")
+                    title = self.browser.find_element(By.TAG_NAME, "h1")
                     title = title.text
                     if "FAKKU is temporarily down for maintenance." in title:
                         print("FAKKU is temporarily down for maintenance.")
