@@ -101,6 +101,13 @@ def main():
         help=f"By default this program creates a folder containing the images as an output. \
                 Setting this creates a CBZ file instead.",
     )
+    argparser.add_argument(
+        "-G",
+        "--GUI",
+        dest="gui",
+        action="store_false",
+        help=f"Run with browser in graphic mode. By default this program runs in headless mode.",
+    )
     args = argparser.parse_args()
 
     file_urls = Path(args.file_urls)
@@ -139,7 +146,7 @@ def main():
         loader.init_browser(auth=True)
     else:
         print(f"Using cookies file: {args.cookies_file}")
-        loader.init_browser(headless=True)
+        loader.init_browser(headless=args.gui)
 
     if args.collection_url:
         loader.load_urls_from_collection(args.collection_url)
