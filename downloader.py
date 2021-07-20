@@ -11,6 +11,7 @@ from pickle import UnpicklingError
 from sys import platform
 from time import sleep
 
+import undetected_chromedriver as uc
 from PIL import Image
 from selenium.common.exceptions import (
     JavascriptException,
@@ -21,10 +22,8 @@ from selenium.common.exceptions import (
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-from seleniumwire.undetected_chromedriver import Chrome, ChromeOptions
+from seleniumwire.webdriver import Chrome
 from tqdm import tqdm
-
-# from seleniumwire.undetected_chromedriver.v2 import Chrome, ChromeOptions
 
 BASE_URL = "https://www.fakku.net"
 LOGIN_URL = f"{BASE_URL}/login/"
@@ -234,6 +233,14 @@ class JewcobDownloader:
         """
         if auth:
             self.__auth()
+
+        uc._Chrome = Chrome
+        # don't check for chromedriver update at every run
+        if os.path.exists(self.driver_path):
+            uc.TARGET_VERSION = 1
+        Chromed = uc.Chrome
+        ChromeOptions = uc.ChromeOptions
+
         options = ChromeOptions()
         if headless:
             options.headless = True
@@ -243,19 +250,20 @@ class JewcobDownloader:
         # set options to avoid cors and other bullshit
         options.add_argument("disable-web-security")
 
-        # options.add_argument('no-sandbox') #fix2
-        # options.add_argument('disable-setuid-sandbox') #fix2
-        # options.add_argument('disable') #fix2
-        # options.add_argument('disable-logging') #fix2
-        # options.add_experimental_option("excludeSwitches", ["enable-logging"]) # fix1
+        seleniumwire_options = {
+            "suppress_connection_errors": False,
+        }
 
-        self.browser = Chrome(
+        self.browser = Chromed(
             executable_path=self.driver_path,
             chrome_options=options,
+            seleniumwire_options=seleniumwire_options,
         )
+        self.browser.set_script_timeout(self.timeout)
+        self.browser.set_page_load_timeout(self.timeout)
+
         if not headless:
             self.browser.set_window_size(*self.default_display)
-        self.browser.header_overrides = {"Accept-Encoding": "gzip"}
         self.browser.response_interceptor = self.interceptor
         self.browser.scopes = [
             ".*books.fakku.net/images/.*",
@@ -288,6 +296,9 @@ class JewcobDownloader:
         """
         Authentication in browser with GUI for saving cookies in first time
         """
+        uc._Chrome = Chrome
+        Chromed = uc.Chrome
+        ChromeOptions = uc.ChromeOptions
         options = ChromeOptions()
         options.headless = False
         self.browser = Chrome(executable_path=self.driver_path, chrome_options=options)
@@ -443,6 +454,8 @@ class JewcobDownloader:
                     circle = fix_filename(circle.text)
                 except NoSuchElementException:
                     circle = None
+                except AttributeError:
+                    circle = None
 
                 try:
                     extra = self.browser.find_element(
@@ -452,6 +465,8 @@ class JewcobDownloader:
                     extra = fix_filename(extra.text)
                     extra = f" ({extra})"
                 except NoSuchElementException:
+                    extra = " (FAKKU)"
+                except AttributeError:
                     extra = " (FAKKU)"
 
                 if circle:
@@ -485,9 +500,9 @@ class JewcobDownloader:
                             self.waiting_loading_page(is_reader_page=True)
                             js_script_test = (
                                 """
-                                                                        var dataURL = HTMLCanvasElement.%s;
-                                                                        return dataURL;
-                                                                        """
+                                                                            var dataURL = HTMLCanvasElement.%s;
+                                                                            return dataURL;
+                                                                            """
                                 % js_name_todata
                             )
                             try:
@@ -692,6 +707,7 @@ class JewcobDownloader:
                 urls_processed += 1
                 if self.max is not None and urls_processed >= self.max:
                     break
+                sleep(self.wait)
 
     def load_urls_from_collection(self, collection_url):
         """
