@@ -61,7 +61,14 @@ Basically fakku is serving shitty color jpgs and most rippers are treating them 
 - removed not working obfuscation, used undetected-chromedriver instead
 - directory/archive and image naming schemes match rbot rips https://sukebei.nyaa.si/user/rbot2000
 
-## How to launch
+## How to launch  
+### Windows (quick)
+1) Download jewcob-downloader.exe from [Releases](https://gitgud.io/combtmp-w5f08/jewcob-downloader/-/releases) page
+2) Download [ChromeDriver](https://chromedriver.chromium.org/downloads) the same version as you Chrome Browser and move it in the same folder as jewcob-downloader.exe. (Rename it to **chromedriver.exe**)  
+4) Create **urls.txt** file in that folder and write urls of manga one by line
+5) Double-click on jewcob-downloader.exe or open folder in command line and run the command <code>jewcob-downloader.exe</code>
+
+### From source  
 1) Download or clone this repository
 2) Download and install [Python](https://www.python.org/downloads/release)  version >= 3.9
 3) Download [ChromeDriver](https://chromedriver.chromium.org/downloads) the same version as you Chrome Browser and move it in root folder.
