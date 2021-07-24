@@ -279,11 +279,11 @@ class JewcobDownloader:
         self.waiting_loading_page(is_reader_page=False)
         # set fakku local storage options, like original image size or enable spreads
         self.browser.execute_script(
-            "window.localStorage.setItem('fakku-twoPageMode','1');"
-            "window.localStorage.setItem('fakku-pageScalingMode','none');"
-            "window.localStorage.setItem('fakku-fitIfOverWidth','false');"
-            "window.localStorage.setItem('fakku-backgroundColor','#7F7B7B');"
-            "window.localStorage.setItem('fakku-suppressWidthFitForSpreads','false');"
+            "window.localStorage.setItem('fakku-twoPageMode','1');"  # Page Display Mode: Singles with Spreads
+            "window.localStorage.setItem('fakku-pageScalingMode','none');"  # Page Scaling: Original Size
+            "window.localStorage.setItem('fakku-fitIfOverWidth','false');"  # Fit to Width if Overwidth: Unticked
+            "window.localStorage.setItem('fakku-backgroundColor','#7F7B7B');"  # Background Color: Gray
+            "window.localStorage.setItem('fakku-suppressWidthFitForSpreads','false');" # But Not When Viewing Two Pages: Unticked
         )
         with open(self.cookies_file, "rb") as f:
             cookies = json.load(f)
@@ -341,7 +341,7 @@ class JewcobDownloader:
             html2 = parsed_html[:h_index] + js_script_in + parsed_html[h_index:]
             response.body = compress(html2)
 
-    def get_response_images(self, img_num, save_path):
+    def get_response_images(self, img_num, save_path, zpad):
         """
         Saves original images sended by fakku server, scrambled and unscrambled
         """
@@ -367,7 +367,10 @@ class JewcobDownloader:
                             resp_file_type = resp_file_type.replace("jpeg", "jpg")
                             resp_data = request.response.body
                             resp_destination_file = os.sep.join(
-                                [save_path, f"{self.resp_page:02d}.{resp_file_type}"]
+                                [
+                                    save_path,
+                                    f"{self.resp_page:0{zpad}d}.{resp_file_type}",
+                                ]
                             )
                             with open(resp_destination_file, "wb") as file:
                                 file.write(resp_data)
@@ -411,14 +414,19 @@ class JewcobDownloader:
 
                 self.browser.get(url)
                 self.waiting_loading_page(is_reader_page=False)
-                page_count = self.__get_page_count()
+
+                # before parsing the main page check if user is logged
                 try:
                     login_check = self.browser.find_element(
                         By.CSS_SELECTOR, "div.my-account.header-drop-down"
                     )
                 except:
+                    print("You aren't logged in")
+                    print("Probably expired cookies")
                     print("Remove cookies.json and try again")
                     program_exit()
+
+                page_count = self.__get_page_count()
 
                 # green button under thumbnail
                 try:
@@ -500,9 +508,9 @@ class JewcobDownloader:
                             self.waiting_loading_page(is_reader_page=True)
                             js_script_test = (
                                 """
-                                                                            var dataURL = HTMLCanvasElement.%s;
-                                                                            return dataURL;
-                                                                            """
+                                var dataURL = HTMLCanvasElement.%s;
+                                return dataURL;
+                                """
                                 % js_name_todata
                             )
                             try:
@@ -524,8 +532,17 @@ class JewcobDownloader:
                         )
                         ui.click()
 
+                    if page_count > 1000:
+                        padd = 4
+                    elif page_count > 100:
+                        padd = 3
+                    elif page_count > 10:
+                        padd = 2
+                    else:
+                        padd = 2
+
                     # get first page response image
-                    self.get_response_images(page_num, response_folder)
+                    self.get_response_images(page_num, response_folder, padd)
 
                     # waiting for bottom layer menu, gallery control, detecting spreads
                     spread = False
@@ -557,9 +574,18 @@ class JewcobDownloader:
                             progress_bar.refresh()
                         pages = [page_num]
 
+                    if page_count > 1000:
+                        padd = 4
+                    elif page_count > 100:
+                        padd = 3
+                    elif page_count > 10:
+                        padd = 2
+                    else:
+                        padd = 2
+
                     for page_num in pages:
                         # get next page response image
-                        self.get_response_images(page_num, response_folder)
+                        self.get_response_images(page_num, response_folder, padd)
 
                     # wait untill loader hides itsefl
                     WebDriverWait(self.browser, self.timeout).until(
@@ -617,16 +643,16 @@ class JewcobDownloader:
                     for img_url, page_num in zip(images_found, pages):
                         ext = self.resp_done[img_url].split(".")[-1]
                         destination_file = os.sep.join(
-                            [manga_abs_path, f"{page_num:02d}.{ext}"]
+                            [manga_abs_path, f"{page_num:0{padd}d}.{ext}"]
                         )
                         if spread:
                             if pages.index(page_num) == 0:
                                 destination_file = os.sep.join(
-                                    [manga_abs_path, f"{page_num:02d}b.{ext}"]
+                                    [manga_abs_path, f"{page_num:0{padd}d}b.{ext}"]
                                 )
                             elif pages.index(page_num) == 1:
                                 destination_file = os.sep.join(
-                                    [manga_abs_path, f"{page_num:02d}c.{ext}"]
+                                    [manga_abs_path, f"{page_num:0{padd}d}c.{ext}"]
                                 )
                         shutil.copy(self.resp_done[img_url], destination_file)
                         fin_img.append(destination_file)
@@ -635,16 +661,16 @@ class JewcobDownloader:
                     # get all images from canvas
                     for c, page_num in zip(canvas_found, pages):
                         destination_file = os.sep.join(
-                            [manga_abs_path, f"{page_num:02d}.png"]
+                            [manga_abs_path, f"{page_num:0{padd}d}.png"]
                         )
                         if spread:
                             if pages.index(page_num) == 0:
                                 destination_file = os.sep.join(
-                                    [manga_abs_path, f"{page_num:02d}b.png"]
+                                    [manga_abs_path, f"{page_num:0{padd}d}b.png"]
                                 )
                             elif pages.index(page_num) == 1:
                                 destination_file = os.sep.join(
-                                    [manga_abs_path, f"{page_num:02d}c.png"]
+                                    [manga_abs_path, f"{page_num:0{padd}d}c.png"]
                                 )
 
                         js_script = f"""
@@ -667,8 +693,12 @@ class JewcobDownloader:
                         progress_bar.update(1)
 
                     if spread:
-                        nam1 = fin_img[0].split("/")[-1].split(".")[0][:-1]
-                        nam2 = fin_img[1].split("/")[-1].split(".")[0][:-1]
+                        if platform == "win32":
+                            sp_c = "\\"
+                        else:
+                            sp_c = "/"
+                        nam1 = fin_img[0].split(sp_c)[-1].split(".")[0][:-1]
+                        nam2 = fin_img[1].split(sp_c)[-1].split(".")[0][:-1]
                         spread_name = nam1 + "-" + nam2
                         destination_file_spread = os.sep.join(
                             [manga_abs_path, f"{spread_name}a.png"]
