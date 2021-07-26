@@ -283,16 +283,12 @@ class JewcobDownloader:
         # Fit to Width if Overwidth: Unticked
         # Background Color: Gray
         # But Not When Viewing Two Pages: Unticked
-        # UI Control Direction for Right to Left Content: Left to Right
-        # Read in Either Direction on First Page: Unticked
         self.browser.execute_script(
             "window.localStorage.setItem('fakku-twoPageMode','1');"
             "window.localStorage.setItem('fakku-pageScalingMode','none');"
             "window.localStorage.setItem('fakku-fitIfOverWidth','false');"
             "window.localStorage.setItem('fakku-backgroundColor','#7F7B7B');"
             "window.localStorage.setItem('fakku-suppressWidthFitForSpreads','false');"
-            "window.localStorage.setItem('fakku-uiControlDirection','ltr');"
-            "window.localStorage.setItem('fakku-uiFirstPageControlDirectionFlip','false');"
         )
         with open(self.cookies_file, "rb") as f:
             cookies = json.load(f)
@@ -486,8 +482,6 @@ class JewcobDownloader:
                 except AttributeError:
                     extra = " (FAKKU)"
 
-                # other fix for the reading direction, spreads issue
-                """
                 try:
                     direction = self.browser.find_element(
                         By.XPATH, "//*[@class='row-left' and contains(text(),'Direction')]/following-sibling::div"
@@ -497,7 +491,6 @@ class JewcobDownloader:
                     direction = "Right to Left"
                 except AttributeError:
                     direction = "Right to Left"
-                """
 
                 if circle:
                     folder_title = (
@@ -661,15 +654,12 @@ class JewcobDownloader:
 
                     fin_img = []
 
-                    # other fix for the reading direction, spreads issue
-                    """
                     if direction == "Left to Right":
                         pass
                     elif direction == "Right to Left":
                         images_found.reverse()
                         canvas_found.reverse()
                         pass
-                    """
 
                     # copy image from server response
                     for img_url, page_num in zip(images_found, pages):
