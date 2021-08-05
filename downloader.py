@@ -56,8 +56,8 @@ USER_AGENT = None
 ZIP = False
 
 # create script tag to put in html body/head
-js_name_todata = "".join(
-    secrets.choice(string.ascii_letters + string.digits) for _ in range(10)
+js_name_todata = secrets.choice(string.ascii_letters) + "".join(
+    secrets.choice(string.ascii_letters + string.digits) for _ in range(9)
 )
 js_script_in = """
 <script>var s = document.createElement('script');
@@ -275,8 +275,7 @@ class JewcobDownloader:
         """
         Changes local storage reader options and loads cookies from json file
         """
-        self.browser.get(LOGIN_URL)
-        self.waiting_loading_page(is_reader_page=False)
+        self.waiting_loading_page(LOGIN_URL, is_reader_page=False)
         # set fakku local storage options
         # Page Display Mode: Singles with Spreads
         # Page Scaling: Original Size
@@ -417,8 +416,7 @@ class JewcobDownloader:
                 self.timeout = TIMEOUT
                 self.wait = WAIT
 
-                self.browser.get(url)
-                self.waiting_loading_page(is_reader_page=False)
+                self.waiting_loading_page(url, is_reader_page=False)
 
                 # before parsing the main page check if user is logged
                 try:
@@ -484,7 +482,8 @@ class JewcobDownloader:
 
                 try:
                     direction = self.browser.find_element(
-                        By.XPATH, "//*[@class='row-left' and contains(text(),'Direction')]/following-sibling::div"
+                        By.XPATH,
+                        "//*[@class='row-left' and contains(text(),'Direction')]/following-sibling::div",
                     )
                     direction = direction.text
                 except NoSuchElementException:
@@ -518,25 +517,24 @@ class JewcobDownloader:
                     if page_num == 1:
                         # injection test
                         js_test = False
-                        self.browser.get(f"{url}/read/page/{page_num}")
                         while not js_test:
-                            self.waiting_loading_page(is_reader_page=True)
-                            js_script_test = (
-                                """
-                                var dataURL = HTMLCanvasElement.%s;
-                                return dataURL;
-                                """
-                                % js_name_todata
+                            self.waiting_loading_page(
+                                f"{url}/read/page/{page_num}", is_reader_page=True
+                            )
+                            js_script_test = """
+                            var dataURL = HTMLCanvasElement.%s;
+                            return dataURL;
+                            """ % (
+                                js_name_todata,
                             )
                             try:
-                                js_test = self.browser.execute_script(js_script_test)
-                                # js_test result should be empty dict {}
-                                if type(js_test) is dict:
+                                jt = self.browser.execute_script(js_script_test)
+                                # jt result should be empty dict {}
+                                if type(jt) is dict:
                                     js_test = True
                                 else:
                                     js_test = False
                                     print("retry")
-                                    self.browser.get(f"{url}/read/page/{page_num}")
                             except JavascriptException:
                                 pass
                             sleep(self.wait)
@@ -765,8 +763,7 @@ class JewcobDownloader:
         """
         Function which records the manga URLs inside a collection
         """
-        self.browser.get(collection_url)
-        self.waiting_loading_page(is_reader_page=False)
+        self.waiting_loading_page(collection_url, is_reader_page=False)
         page_count = self.__get_page_count_in_collection()
         with open(self.urls_file, "a") as f:
             for page_num in tqdm(range(1, page_count + 1)):
@@ -774,8 +771,9 @@ class JewcobDownloader:
                     page_num != 1
                 ):  # Fencepost problem, the first page of a collection is already loaded
                     print(f"{collection_url}/page/{page_num}")
-                    self.browser.get(f"{collection_url}/page/{page_num}")
-                    self.waiting_loading_page(is_reader_page=False)
+                    self.waiting_loading_page(
+                        f"{collection_url}/page/{page_num}", is_reader_page=False
+                    )
 
                 try:
                     all_pages_book = self.browser.find_elements(
@@ -848,20 +846,20 @@ class JewcobDownloader:
         return: urls -- list
             List of urls from urls_file
         """
-        done = []
+        done = set()
         with open(done_file, "r") as donef:
             for line in donef:
-                done.append(line.replace("\n", ""))
+                done.add(line.replace("\n", ""))
 
         urls = []
         with open(urls_file, "r") as f:
             for line in f:
                 clean_line = line.replace("\n", "")
-                if clean_line not in done:
+                if clean_line not in done and clean_line not in urls:
                     urls.append(clean_line)
         return urls
 
-    def waiting_loading_page(self, is_reader_page=False):
+    def waiting_loading_page(self, url, is_reader_page=False):
         """
         Awaiting while page will load
         ---------------------------
@@ -869,11 +867,20 @@ class JewcobDownloader:
             False -- awaiting of main manga page
             True -- awaiting of others manga pages
         """
+        while True:
+            try:
+                self.browser.get(url)
+                break
+            except TimeoutException as err:
+                sleep(self.wait)
+
         if not is_reader_page:
             elem_xpath = "//link[@type='image/x-icon']"
         else:
             elem_xpath = "//div[@data-name='PageView']"
         elm_found = False
+        tried = 0
+        tried_2 = 0
         while not elm_found:
             try:
                 element = EC.presence_of_element_located((By.XPATH, elem_xpath))
@@ -892,4 +899,14 @@ class JewcobDownloader:
                 )
                 self.timeout += 10
                 self.browser.refresh()
+            if tried_2 > 10:
+                print("Connection issues, Try again")
+                program_exit()
+            elif tried > 2:
+                print("\nSome connection issues, refreshing page")
+                self.browser.refresh()
+                tried = 0
+            else:
+                tried += 1
+                tried_2 += 1
             sleep(self.wait)
