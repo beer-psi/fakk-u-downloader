@@ -1,17 +1,19 @@
 import json
+import logging
 import os
 import re
 import secrets
 import shutil
 import string
+import sys
 from binascii import a2b_base64
 from collections import OrderedDict
-from gzip import compress, decompress
+from io import BytesIO
 from pickle import UnpicklingError
-from sys import platform
 from time import sleep
 
 import undetected_chromedriver as uc
+import urllib3.response
 from PIL import Image
 from selenium.common.exceptions import (
     JavascriptException,
@@ -25,12 +27,14 @@ from selenium.webdriver.support.ui import WebDriverWait
 from seleniumwire.webdriver import Chrome
 from tqdm import tqdm
 
+log = logging.getLogger(__name__)
+
 BASE_URL = "https://www.fakku.net"
 LOGIN_URL = f"{BASE_URL}/login/"
 # Initial display settings for browser. Used for grahic mode
 MAX_DISPLAY_SETTINGS = [800, 600]
 # Path to headless driver
-if platform == "win32":
+if sys.platform == "win32":
     EXEC_PATH = "chromedriver.exe"
 else:
     EXEC_PATH = "chromedriver"
@@ -54,6 +58,8 @@ MAX = None
 USER_AGENT = None
 # Should a cbz archive file be created
 ZIP = False
+# script version
+version = "v0.0.4"
 
 # create script tag to put in html body/head
 js_name_todata = secrets.choice(string.ascii_letters) + "".join(
@@ -80,7 +86,7 @@ js_script_in = js_script_in.encode()
 
 
 def program_exit():
-    print("Program exit.")
+    logging.info("Program exit.")
     exit()
 
 
@@ -100,6 +106,7 @@ def append_images(
     Returns:
         Concatenated image as a new PIL image object.
     """
+    log.debug("Joining spreads")
     if type(imgs[0]) is str:
         images = map(Image.open, imgs)
     else:
@@ -146,11 +153,12 @@ def fix_filename(filename):
     """
     Removes illegal characters from filename.
     """
+    log.debug("Fixing filename")
     filename = filename.replace("\n", "")
     filename = filename.replace("\r", "")
     filename = filename.replace("\t", "")
     filename = filename.replace("/", "⁄")
-    if platform == "win32":
+    if sys.platform == "win32":
         rstr = r'[\\:*?"<>|]+'
         filename = re.sub(rstr, "_", filename)  # Replace with underscore
     return filename
@@ -231,6 +239,7 @@ class JewcobDownloader:
             If True: launch browser in headless mode
             If False: launch browser with GUI
         """
+        log.debug("Initializing browser")
         if auth:
             self.__auth()
 
@@ -250,8 +259,12 @@ class JewcobDownloader:
         # set options to avoid cors and other bullshit
         options.add_argument("disable-web-security")
 
+        if log.level == 10:
+            sce = False
+        else:
+            sce = True
         seleniumwire_options = {
-            "suppress_connection_errors": False,
+            "suppress_connection_errors": sce,
         }
 
         self.browser = Chromed(
@@ -269,12 +282,14 @@ class JewcobDownloader:
             ".*books.fakku.net/images/.*",
             ".*fakku.net/hentai/.*/read/page/.*",
         ]
+
         self.__set_cookies()
 
     def __set_cookies(self):
         """
         Changes local storage reader options and loads cookies from json file
         """
+        log.debug("Loading cookies")
         self.waiting_loading_page(LOGIN_URL, is_reader_page=False)
         # set fakku local storage options
         # Page Display Mode: Singles with Spreads
@@ -300,6 +315,7 @@ class JewcobDownloader:
         """
         Authentication in browser with GUI for saving cookies in first time
         """
+        log.debug("Authentication")
         uc._Chrome = Chrome
         Chromed = uc.Chrome
         ChromeOptions = uc.ChromeOptions
@@ -326,29 +342,40 @@ class JewcobDownloader:
         """
         if "fakku.net/hentai/" in request.url and "/read/page/" in request.url:
             # various checks to make sure we're only injecting the script on appropriate responses
-            # we check that the content type is HTML, that the status code is 200, and that the encoding is gzip
+            # we check that the content type is HTML and that the status code is 200
             if (
                 response.headers.get_content_subtype() != "html"
                 or response.status_code != 200
-                or response.headers["Content-Encoding"] != "gzip"
             ):
-                print(response.headers.get_content_subtype())
-                print(response.status_code)
-                print(response.headers["Content-Encoding"])
-                print(response.headers)
-                print(request.url)
+                logging.debug(response.headers.get_content_subtype())
+                logging.debug(response.status_code)
+                logging.debug(response.headers)
+                logging.debug(request.url)
                 return None
+
+            if "Content-Encoding" in response.headers:
+                # let urlib3.response take care of response.body encoding
+                urlib3_response = urllib3.response.HTTPResponse(
+                    reason=response.reason,
+                    headers=response.headers,
+                    body=BytesIO(response.body),
+                )
+                response.body = urlib3_response.data
+                del response.headers["Content-Encoding"]
+
             # modify response body
-            parsed_html = decompress(response.body)
+            parsed_html = response.body
             f = b"<head>"
             h_index = parsed_html.find(f) + len(f)
             html2 = parsed_html[:h_index] + js_script_in + parsed_html[h_index:]
-            response.body = compress(html2)
+            response.body = html2
+            log.debug("Response body modified")
 
     def get_response_images(self, img_num, save_path, zpad):
         """
         Saves original images sended by fakku server, scrambled and unscrambled
         """
+        log.debug("Get response images")
         while len(list(self.resp_done.values())) < int(img_num):
             all_requests = None
             while not all_requests:
@@ -388,6 +415,7 @@ class JewcobDownloader:
         open main page and first reader page, click the rest
         dumps images data urls from html canvas as .png
         """
+        log.debug("Starting main downloader function")
         if not os.path.exists(self.root_manga_dir):
             os.mkdir(self.root_manga_dir)
         if not os.path.exists(self.root_response_dir):
@@ -408,11 +436,11 @@ class JewcobDownloader:
             urls_processed = 0
             for url in self.urls:
                 if "fakku.net/anime/" in url or "fakku.net/games/" in url:
-                    print(f"{url.split('fakku.net/')[-1].split('/')[0]}: {url}")
+                    logging.info(f"{url.split('fakku.net/')[-1].split('/')[0]}: {url}")
                     urls_processed += 1
                     continue
 
-                print(url)
+                logging.info(url)
                 self.timeout = TIMEOUT
                 self.wait = WAIT
 
@@ -424,12 +452,13 @@ class JewcobDownloader:
                         By.CSS_SELECTOR, "div.my-account.header-drop-down"
                     )
                 except:
-                    print("You aren't logged in")
-                    print("Probably expired cookies")
-                    print("Remove cookies.json and try again")
+                    logging.info("You aren't logged in")
+                    logging.info("Probably expired cookies")
+                    logging.info("Remove cookies.json and try again")
                     program_exit()
 
                 page_count = self.__get_page_count()
+                log.debug(page_count)
 
                 # green button under thumbnail
                 try:
@@ -437,17 +466,18 @@ class JewcobDownloader:
                         By.CSS_SELECTOR, "a.button.icon.green"
                     )
                     if "Start Reading" not in bt.text:
-                        print(f"{bt.text}: {url}")
+                        logging.info(f"{bt.text}: {url}")
                         urls_processed += 1
                         continue
                 except NoSuchElementException as err:
-                    print(f"No green button: {url}")
+                    logging.info(f"No green button: {url}")
                     urls_processed += 1
                     continue
 
                 artist = self.browser.find_element(By.CSS_SELECTOR, "a[href*=artist]")
                 artist = artist.find_element(By.XPATH, "./..")
                 artist = fix_filename(artist.text)
+                log.debug(artist)
 
                 self.resp_done = OrderedDict()
                 self.resp_page = 1
@@ -456,6 +486,7 @@ class JewcobDownloader:
 
                 title = self.browser.find_element(By.TAG_NAME, "h1")
                 title = fix_filename(title.text)
+                log.debug(title)
 
                 try:
                     circle = self.browser.find_element(
@@ -467,6 +498,7 @@ class JewcobDownloader:
                     circle = None
                 except AttributeError:
                     circle = None
+                log.debug(circle)
 
                 try:
                     extra = self.browser.find_element(
@@ -479,6 +511,7 @@ class JewcobDownloader:
                     extra = " (FAKKU)"
                 except AttributeError:
                     extra = " (FAKKU)"
+                log.debug(extra)
 
                 try:
                     direction = self.browser.find_element(
@@ -490,6 +523,7 @@ class JewcobDownloader:
                     direction = "Right to Left"
                 except AttributeError:
                     direction = "Right to Left"
+                log.debug(direction)
 
                 if circle:
                     folder_title = (
@@ -500,12 +534,13 @@ class JewcobDownloader:
                 manga_folder = os.sep.join([self.root_manga_dir, folder_title])
                 if not os.path.exists(manga_folder):
                     os.mkdir(manga_folder)
+                log.debug(manga_folder)
                 manga_abs_path = os.path.abspath(manga_folder)
                 response_folder = os.sep.join([self.root_response_dir, folder_title])
                 if not os.path.exists(response_folder):
                     os.mkdir(response_folder)
 
-                print(f'Downloading "{folder_title}" manga.')
+                logging.info(f'Downloading "{folder_title}" manga.')
 
                 progress_bar = tqdm(
                     total=page_count, desc="Working...", leave=False, position=0
@@ -516,6 +551,7 @@ class JewcobDownloader:
                 while page_num <= page_count:
                     if page_num == 1:
                         # injection test
+                        log.debug("First page, testing injection")
                         js_test = False
                         while not js_test:
                             self.waiting_loading_page(
@@ -534,12 +570,13 @@ class JewcobDownloader:
                                     js_test = True
                                 else:
                                     js_test = False
-                                    print("retry")
+                                    logging.info("retry")
                             except JavascriptException:
                                 pass
                             sleep(self.wait)
 
                     else:
+                        log.debug("Clicking next page")
                         ui = self.browser.find_element(
                             By.CSS_SELECTOR, 'div.layer[data-name="UI"]'
                         )
@@ -586,6 +623,7 @@ class JewcobDownloader:
                             progress_bar.total = page_count
                             progress_bar.refresh()
                         pages = [page_num]
+                    log.debug(page_count)
 
                     if page_count > 1000:
                         padd = 4
@@ -615,7 +653,7 @@ class JewcobDownloader:
                     canvas_found = []
                     images_found = []
 
-                    # parsing PageView layer for canvas/images
+                    log.debug("Parsing PageView layer for canvas/images")
                     while len(canvas_found) != len(pages) and len(images_found) != len(
                         pages
                     ):
@@ -644,8 +682,10 @@ class JewcobDownloader:
                                         elif "/thumbs/" in img_url:
                                             pass
                                         else:
-                                            print(img_url)
-                                            print("Issue when image not in response")
+                                            logging.info(img_url)
+                                            logging.info(
+                                                "Issue when image not in response"
+                                            )
                         except StaleElementReferenceException as err:
                             pass
                         sleep(self.wait)
@@ -659,7 +699,7 @@ class JewcobDownloader:
                         canvas_found.reverse()
                         pass
 
-                    # copy image from server response
+                    log.debug("Copy image from server response")
                     for img_url, page_num in zip(images_found, pages):
                         ext = self.resp_done[img_url].split(".")[-1]
                         destination_file = os.sep.join(
@@ -678,7 +718,7 @@ class JewcobDownloader:
                         fin_img.append(destination_file)
                         progress_bar.update(1)
 
-                    # get all images from canvas
+                    log.debug("Get all images from canvas")
                     for c, page_num in zip(canvas_found, pages):
                         destination_file = os.sep.join(
                             [manga_abs_path, f"{page_num:0{padd}d}.png"]
@@ -713,7 +753,7 @@ class JewcobDownloader:
                         progress_bar.update(1)
 
                     if spread:
-                        if platform == "win32":
+                        if sys.platform == "win32":
                             sp_c = "\\"
                         else:
                             sp_c = "/"
@@ -727,6 +767,7 @@ class JewcobDownloader:
                             fin_img, direction="horizontal", aligment="none"
                         )
                         combo.save(destination_file_spread)
+                        log.debug(destination_file_spread)
 
                     page_num += 1
                     sleep(self.wait)
@@ -752,17 +793,19 @@ class JewcobDownloader:
                     shutil.move(new_archive_title, self.root_manga_dir)
                     shutil.rmtree(manga_folder)
 
-                print(">> manga done!")
+                logging.info(">> manga done!")
                 done_file_obj.write(f"{url}\n")
                 urls_processed += 1
                 if self.max is not None and urls_processed >= self.max:
                     break
+                log.debug("Finished parsing page")
                 sleep(self.wait)
 
     def load_urls_from_collection(self, collection_url):
         """
         Function which records the manga URLs inside a collection
         """
+        log.debug("Loading urls from collection")
         self.waiting_loading_page(collection_url, is_reader_page=False)
         page_count = self.__get_page_count_in_collection()
         with open(self.urls_file, "a") as f:
@@ -770,7 +813,7 @@ class JewcobDownloader:
                 if (
                     page_num != 1
                 ):  # Fencepost problem, the first page of a collection is already loaded
-                    print(f"{collection_url}/page/{page_num}")
+                    logging.info(f"{collection_url}/page/{page_num}")
                     self.waiting_loading_page(
                         f"{collection_url}/page/{page_num}", is_reader_page=False
                     )
@@ -803,6 +846,7 @@ class JewcobDownloader:
         return: int
             Number of manga pages
         """
+        log.debug("Getting gallery page count")
         page_count = None
         while not page_count:
             divs = self.browser.find_elements(By.CLASS_NAME, "row-right")
@@ -821,6 +865,7 @@ class JewcobDownloader:
         return: int
             Number of collection pages
         """
+        log.debug("Getting page count in collection")
         page_count = None
         while not page_count:
             try:
@@ -846,6 +891,7 @@ class JewcobDownloader:
         return: urls -- list
             List of urls from urls_file
         """
+        log.debug("Parsing list of urls")
         done = set()
         with open(done_file, "r") as donef:
             for line in donef:
@@ -867,6 +913,7 @@ class JewcobDownloader:
             False -- awaiting of main manga page
             True -- awaiting of others manga pages
         """
+        log.debug("Loading url")
         while True:
             try:
                 self.browser.get(url)
@@ -881,6 +928,7 @@ class JewcobDownloader:
         elm_found = False
         tried = 0
         tried_2 = 0
+        log.debug("Waiting for element")
         while not elm_found:
             try:
                 element = EC.presence_of_element_located((By.XPATH, elem_xpath))
@@ -890,23 +938,24 @@ class JewcobDownloader:
                     title = self.browser.find_element(By.TAG_NAME, "h1")
                     title = title.text
                     if "FAKKU is temporarily down for maintenance." in title:
-                        print("FAKKU is temporarily down for maintenance.")
+                        logging.info("FAKKU is temporarily down for maintenance.")
                         program_exit()
                 except NoSuchElementException as err2:
                     pass
-                print(
+                logging.info(
                     "\nError: timed out waiting for page to load. Timeout increased +10 for more delaying."
                 )
                 self.timeout += 10
                 self.browser.refresh()
             if tried_2 > 10:
-                print("Connection issues, Try again")
+                logging.info("Connection issues, Try again")
                 program_exit()
             elif tried > 2:
-                print("\nSome connection issues, refreshing page")
+                logging.info("\nSome connection issues, refreshing page")
                 self.browser.refresh()
                 tried = 0
             else:
                 tried += 1
                 tried_2 += 1
+            logging.debug("Sleeping")
             sleep(self.wait)
