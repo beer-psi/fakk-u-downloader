@@ -1,4 +1,6 @@
 import argparse
+import logging
+import sys
 from pathlib import Path
 
 from downloader import (
@@ -11,6 +13,7 @@ from downloader import (
     URLS_FILE,
     WAIT,
     program_exit,
+    version,
 )
 
 
@@ -108,13 +111,60 @@ def main():
         action="store_false",
         help=f"Run with browser in graphic mode. By default this program runs in headless mode.",
     )
+    argparser.add_argument(
+        "-D",
+        "--DEBUG",
+        dest="debug",
+        action="store_true",
+        help=f"Run in debug mode, saves logs in debug.log file. Default false.",
+    )
     args = argparser.parse_args()
+    log_handlers = []
+    if args.debug:
+        log_level = logging.DEBUG
+        log_formatter_steam = logging.Formatter(
+            "%(levelname)s : %(name)s : %(module)s : %(funcName)s : %(lineno)d : %(message)s"
+        )
+        log_formatter_file = "%(asctime)s %(levelname)s %(name)s %(filename)s %(module)s %(funcName)s %(lineno)d %(message)s"
+        log_file = "debug.log"
+        log_handlers.append(logging.FileHandler(log_file, mode="w"))
+    else:
+        log_level = logging.INFO
+        log_formatter_steam = logging.Formatter("%(message)s")
+        log_formatter_file = ""
+        log_file = None
+
+    # added logging for both console and file
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(log_formatter_steam)
+    stream_handler.setLevel(log_level)
+    log_handlers.append(stream_handler)
+    logging.basicConfig(
+        level=log_level, format=log_formatter_file, handlers=log_handlers
+    )
+
+    log = logging.getLogger(__name__)
+    if args.debug:
+        log.debug(f"Version: %s", version)
+        log.debug("Python %s - %s", sys.version, sys.platform)
+        log.debug(sys.argv)
+        log.debug(args)
+
+    # ignore handlers other than root
+    logging.getLogger("hpack").setLevel(logging.ERROR)
+    logging.getLogger("PIL.PngImagePlugin").setLevel(logging.ERROR)
+    logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
+    logging.getLogger("selenium.webdriver.remote.remote_connection").setLevel(
+        logging.ERROR
+    )
+    logging.getLogger("seleniumwire").setLevel(logging.ERROR)
+    logging.getLogger("undetected_chromedriver").setLevel(logging.ERROR)
 
     file_urls = Path(args.file_urls)
     if args.collection_url:
         Path(args.file_urls).touch()
     elif not file_urls.is_file() or file_urls.stat().st_size == 0:
-        print(
+        logging.info(
             f"File {args.file_urls} does not exist or empty.\n"
             + "Create it and write the list of manga urls first.\n"
             + "Or run this again with the -z parameter with a collection_url to download urls first."
@@ -139,13 +189,13 @@ def main():
     )
 
     if not Path(args.cookies_file).is_file():
-        print(
+        logging.info(
             f"Cookies file({args.cookies_file}) are not detected. Please, "
             + "login in next step for generate cookie for next runs."
         )
         loader.init_browser(auth=True, headless=args.gui)
     else:
-        print(f"Using cookies file: {args.cookies_file}")
+        logging.info(f"Using cookies file: {args.cookies_file}")
         loader.init_browser(headless=args.gui)
 
     if args.collection_url:
