@@ -474,9 +474,16 @@ class JewcobDownloader:
                     urls_processed += 1
                     continue
 
-                artist = self.browser.find_element(By.CSS_SELECTOR, "a[href*=artist]")
-                artist = artist.find_element(By.XPATH, "./..")
-                artist = fix_filename(artist.text)
+                try:
+                    artist = self.browser.find_element(
+                        By.CSS_SELECTOR, "a[href*=artist]"
+                    )
+                    artist = artist.find_element(By.XPATH, "./..")
+                    artist = fix_filename(artist.text)
+                except NoSuchElementException:
+                    artist = None
+                except AttributeError:
+                    artist = None
                 log.debug(artist)
 
                 self.resp_done = OrderedDict()
@@ -525,12 +532,17 @@ class JewcobDownloader:
                     direction = "Right to Left"
                 log.debug(direction)
 
-                if circle:
-                    folder_title = (
-                        "[" + circle + " (" + artist + ")" + "] " + title + extra
-                    )
+                if artist:
+                    if circle:
+                        folder_title = (
+                            "[" + circle + " (" + artist + ")" + "] " + title + extra
+                        )
+                    else:
+                        folder_title = "[" + artist + "] " + title + extra
+                elif circle:
+                    folder_title = "[" + circle + "] " + title + extra
                 else:
-                    folder_title = "[" + artist + "] " + title + extra
+                    folder_title = title + extra
                 manga_folder = os.sep.join([self.root_manga_dir, folder_title])
                 if not os.path.exists(manga_folder):
                     os.mkdir(manga_folder)
