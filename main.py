@@ -12,7 +12,6 @@ from downloader import (
     TIMEOUT,
     URLS_FILE,
     WAIT,
-    program_exit,
     version,
 )
 
@@ -97,26 +96,29 @@ def main():
             Set this argument if you become blocked. By default -- No limit",
     )
     argparser.add_argument(
-        "-n",
         "--nozip",
         dest="zip",
-        action="store_true",
-        help=f"By default this program creates a folder containing the images as an output. \
-                Setting this creates a CBZ file instead.",
+        action="store_false",
+        help=f"By default this program creates a CBZ file containing the images as an output. \
+                Setting this creates a folder instead.",
     )
     argparser.add_argument(
-        "-G",
         "--GUI",
         dest="gui",
-        action="store_false",
+        action="store_true",
         help=f"Run with browser in graphic mode. By default this program runs in headless mode.",
     )
     argparser.add_argument(
-        "-D",
         "--DEBUG",
         dest="debug",
         action="store_true",
         help=f"Run in debug mode, saves logs in debug.log file. Default false.",
+    )
+    argparser.add_argument(
+        "--nometa",
+        dest="metadata",
+        action="store_false",
+        help=f"Keep gallery metadata in info.json file inside directory/archive. Default true",
     )
     args = argparser.parse_args()
     log_handlers = []
@@ -169,7 +171,7 @@ def main():
             + "Create it and write the list of manga urls first.\n"
             + "Or run this again with the -z parameter with a collection_url to download urls first."
         )
-        program_exit()
+        exit()
 
     # Create empty done.text if it not exists
     if not Path(args.done_file).is_file():
@@ -193,15 +195,15 @@ def main():
             f"Cookies file({args.cookies_file}) are not detected. Please, "
             + "login in next step for generate cookie for next runs."
         )
-        loader.init_browser(auth=True, headless=args.gui)
+        loader.init_browser(auth=True, gui=args.gui)
     else:
         logging.info(f"Using cookies file: {args.cookies_file}")
-        loader.init_browser(headless=args.gui)
+        loader.init_browser(gui=args.gui)
 
     if args.collection_url:
         loader.load_urls_from_collection(args.collection_url)
     else:
-        loader.load_all()
+        loader.load_all(save_metadata=args.metadata)
 
 
 if __name__ == "__main__":
