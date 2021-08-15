@@ -504,9 +504,6 @@ class JewcobDownloader:
                 logging.info("Remove cookies.json and try again")
                 self.program_exit()
 
-            page_count = self.__get_page_count()
-            log.debug(page_count)
-
             log.debug("Checking if gallery is available, green button")
             try:
                 bt = self.browser.find_element(By.CSS_SELECTOR, "a.button.icon.green")
@@ -519,55 +516,113 @@ class JewcobDownloader:
                 urls_processed += 1
                 continue
 
-            try:
-                artist = self.browser.find_element(By.CSS_SELECTOR, "a[href*=artist]")
-                artist = artist.find_element(By.XPATH, "./..")
-                artist = fix_filename(artist.text)
-            except NoSuchElementException:
-                artist = None
-            except AttributeError:
+            metadata0 = OrderedDict()
+            log.debug("Parsing right side for metadata")
+            meta1 = self.browser.find_element(
+                By.CSS_SELECTOR, "div.content-right"
+            )
+            meta_title = meta1.find_element(By.CSS_SELECTOR, "div.content-name")
+            metadata0["Title"] = meta_title.text
+            log.debug(meta_title.text)
+            meta_rows = meta1.find_elements(By.CSS_SELECTOR, "div.row")
+            log.debug("Parsing right side rows")
+            for meta_row in meta_rows:
+                meta_row_left = meta_row.find_element(
+                    By.CSS_SELECTOR, "div.row-left"
+                )
+                log.debug(f"Parsing {meta_row_left.text}")
+                meta_row_right = meta_row.find_element(
+                    By.CSS_SELECTOR, "div.row-right"
+                )
+                a_tags = meta_row_right.find_elements(By.CSS_SELECTOR, "a")
+                if a_tags:
+                    values = []
+                    for a in a_tags:
+                        if a.text == "+":
+                            continue
+                        values.append(a.text)
+                    if len(values) == 1:
+                        values = values[0]
+                    metadata0[meta_row_left.text] = values
+                else:
+                    metadata0[meta_row_left.text] = meta_row_right.text
+            log.debug(metadata0)
+
+            if 'Artist' in metadata0:
+                if type(metadata0['Artist']) is str:
+                    artist = [metadata0['Artist']]
+                else:
+                    artist = list(metadata0['Artist'])
+                for art in artist:
+                    art = fix_filename(art)
+                if len(artist) > 2:
+                    artist = 'Various'
+                elif len(artist) == 2:
+                    artist = ', '.join(artist)
+                elif len(artist) == 1:
+                    artist = artist[0]
+                else:
+                    artist = None
+            else:
                 artist = None
             log.debug(artist)
 
-            self.resp_done = OrderedDict()
-            self.resp_page = 1
-            resized_to_response = False
-            cropped = False
+            if 'Title' in metadata0:
+                title = metadata0['Title']
+            else:
+                title = self.browser.find_element(By.TAG_NAME, "h1")
+                title = title.text
+            title = fix_filename(title)
+            log.debug(artist)
 
-            title = self.browser.find_element(By.TAG_NAME, "h1")
-            title = fix_filename(title.text)
-            log.debug(title)
-
-            try:
-                circle = self.browser.find_element(By.CSS_SELECTOR, "a[href*=circles]")
-                circle = circle.find_element(By.XPATH, "./..")
-                circle = fix_filename(circle.text)
-            except NoSuchElementException:
-                circle = None
-            except AttributeError:
+            if 'Circle' in metadata0:
+                if type(metadata0['Circle']) is str:
+                    circle = [metadata0['Circle']]
+                else:
+                    circle = list(metadata0['Circle'])
+                for art in circle:
+                    art = fix_filename(art)
+                if len(circle) > 2:
+                    circle = 'Various'
+                elif len(circle) == 2:
+                    circle = ', '.join(circle)
+                elif len(circle) == 1:
+                    circle = circle[0]
+                else:
+                    circle = None
+            else:
                 circle = None
             log.debug(circle)
 
-            try:
-                extra = self.browser.find_element(By.CSS_SELECTOR, "a[href*=magazines]")
-                extra = extra.find_element(By.XPATH, "./..")
-                extra = fix_filename(extra.text)
+            if 'Magazine' in metadata0:
+                if type(metadata0['Magazine']) is str:
+                    extra = [metadata0['Magazine']]
+                else:
+                    extra = list(metadata0['Magazine'])
+                # remove New Illustration because it's not a magazine
+                if 'New Illustration' in extra:
+                    extra.remove('New Illustration')
+                for art in extra:
+                    art = fix_filename(art)
+                if len(extra) > 2:
+                    extra = 'Various'
+                elif len(extra) == 2:
+                    extra = ', '.join(extra)
+                elif len(extra) == 1:
+                    extra = extra[0]
+                else:
+                    extra = None
+            else:
+                extra = None
+            if extra:
                 extra = f" ({extra})"
-            except NoSuchElementException:
-                extra = " (FAKKU)"
-            except AttributeError:
+            else:
                 extra = " (FAKKU)"
             log.debug(extra)
 
-            try:
-                direction = self.browser.find_element(
-                    By.XPATH,
-                    "//*[@class='row-left' and contains(text(),'Direction')]/following-sibling::div",
-                )
-                direction = direction.text
-            except NoSuchElementException:
-                direction = "Right to Left"
-            except AttributeError:
+            if 'Direction' in metadata0:
+                direction = metadata0['Direction']
+            else:
                 direction = "Right to Left"
             log.debug(direction)
 
@@ -593,7 +648,7 @@ class JewcobDownloader:
 
             metadata = None
             if save_metadata:
-                log.debug("Parsing site for metadata metadata")
+                log.debug("Parsing site for metadata")
                 try:
                     metadata = OrderedDict()
                     log.debug("Parsing left side")
@@ -605,35 +660,9 @@ class JewcobDownloader:
                     thumb = thumb.get_attribute("src")
                     log.debug(thumb)
                     metadata["Thumb"] = thumb
-                    log.debug("Parsing right side")
-                    meta1 = self.browser.find_element(
-                        By.CSS_SELECTOR, "div.content-right"
-                    )
-                    meta_title = meta1.find_element(By.CSS_SELECTOR, "div.content-name")
-                    metadata["Title"] = meta_title.text
-                    log.debug(meta_title.text)
-                    meta_rows = meta1.find_elements(By.CSS_SELECTOR, "div.row")
-                    log.debug("Parsing right side rows")
-                    for meta_row in meta_rows:
-                        meta_row_left = meta_row.find_element(
-                            By.CSS_SELECTOR, "div.row-left"
-                        )
-                        log.debug(f"Parsing {meta_row_left.text}")
-                        meta_row_right = meta_row.find_element(
-                            By.CSS_SELECTOR, "div.row-right"
-                        )
-                        a_tags = meta_row_right.find_elements(By.CSS_SELECTOR, "a")
-                        if a_tags:
-                            values = []
-                            for a in a_tags:
-                                if a.text == "+":
-                                    continue
-                                values.append(a.text)
-                            if len(values) == 1:
-                                values = values[0]
-                            metadata[meta_row_left.text] = values
-                        else:
-                            metadata[meta_row_left.text] = meta_row_right.text
+
+                    for k, v in metadata0.items():
+                        metadata[k] = v
 
                     log.debug("Parsing bottom")
                     meta2 = self.browser.find_elements(
@@ -688,17 +717,19 @@ class JewcobDownloader:
                             pass
                             # only comments are left but I don't want to put them in json metadata file
                 except Exception as meta_err:
-                    print(meta_err)
+                    log.info(f'Metadata parser issue, please report url: {url}')
+                    log.info(str(meta_err))
                 log.debug(metadata)
-                log.debug("Dumping metadata in info.json file")
-                json_info_file = os.sep.join(
-                    [
-                        manga_folder,
-                        "info.json",
-                    ]
-                )
-                with open(json_info_file, "w") as f:
-                    json.dump(metadata, f, indent=True)
+
+            if "Pages" in metadata:
+                page_count = int(metadata["Pages"].split(" ")[0])
+            else:
+                # no "Pages" on gallery page, use 2 for now
+                page_count = 2
+            log.debug(page_count)
+
+            self.resp_done = OrderedDict()
+            self.resp_page = 1
 
             logging.info(f'Downloading "{folder_title}" manga.')
 
@@ -930,10 +961,11 @@ class JewcobDownloader:
             del self.browser.requests  # delete old requests
 
             if len(self.resp_done) > 0:
-                resp_info_file = os.sep.join([response_folder, f"response_info.txt"])
-                with open(resp_info_file, "w") as file:
-                    for k, v in self.resp_done.items():
-                        file.write(f"{v}     {k}\n")
+                if log.level == 10:
+                    resp_info_file = os.sep.join([response_folder, f"response_info.txt"])
+                    with open(resp_info_file, "w") as file:
+                        for k, v in self.resp_done.items():
+                            file.write(f"{v}\t{k}\n")
 
             if save_metadata:
                 if metadata:
@@ -953,18 +985,42 @@ class JewcobDownloader:
                     if new_pages:
                         log.debug("Updating page count in metadata info.json dump")
                         metadata2 = OrderedDict()
-                        for k, v in metadata:
-                            if k == "Favorites":
-                                metadata2["Pages"] = new_pages
+                        paged = False
+                        for k, v in metadata.items():
+                            if not paged:
+                                # trying to get "Pages" info at the same line in json file
+                                if k == "Favorites":
+                                    metadata2["Pages"] = new_pages
+                                    paged = True
+                                elif k == "Direction":
+                                    metadata2["Pages"] = new_pages
+                                    paged = True
+                                elif k == "Description":
+                                    metadata2["Pages"] = new_pages
+                                    paged = True
+                                elif k == "Tags":
+                                    metadata2["Pages"] = new_pages
+                                    paged = True
+                                elif k == "Related":
+                                    metadata2["Pages"] = new_pages
+                                    paged = True
+                                elif k == "Chapters":
+                                    metadata2["Pages"] = new_pages
+                                    paged = True
+                                elif k == "Collections":
+                                    metadata2["Pages"] = new_pages
+                                    paged = True
                             metadata2[k] = v
-                        json_info_file = os.sep.join(
-                            [
-                                manga_folder,
-                                "info.json",
-                            ]
-                        )
-                        with open(json_info_file, "w") as f:
-                            json.dump(metadata2, f, indent=True)
+                        metadata = metadata2
+                    log.debug("Dumping metadata in info.json file")
+                    json_info_file = os.sep.join(
+                        [
+                            manga_folder,
+                            "info.json",
+                        ]
+                    )
+                    with open(json_info_file, "w") as f:
+                        json.dump(metadata, f, indent=True)
 
             if self.zip:
                 log.debug("Creating a cbz and deleting the image folder after creation")
@@ -1017,34 +1073,6 @@ class JewcobDownloader:
                         f.write(f"{href}\n")
                 except NoSuchElementException as err:
                     pass
-
-    def __get_page_count(self):
-        """
-        Get count of manga pages from html code
-        ----------------------------
-        param: page_source -- string
-            String that contains html code
-        return: int
-            Number of manga pages
-        """
-        log.debug("Getting gallery page count")
-        page_count = False
-        divs_l = self.browser.find_elements(By.CLASS_NAME, "row-left")
-        for div in divs_l:
-            if div.text == "Pages":
-                page_count = True
-                break
-        if page_count:
-            page_count = False
-            while not page_count:
-                divs_r = self.browser.find_elements(By.CLASS_NAME, "row-right")
-                for div in divs_r:
-                    if div.text.endswith(" pages") or div.text.endswith(" page"):
-                        page_count = int(div.text.split(" ")[0])
-                sleep(self.wait)
-        else:
-            page_count = 2
-        return page_count
 
     def __get_page_count_in_collection(self):
         """
