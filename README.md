@@ -2,7 +2,7 @@ forked from https://github.com/Hikot0shi/fakku-downloader/
 
 tested on 7558 urls   
 7558 works downloaded without an issue (games and anime skipped)   
-running 24x7 on loonix debian vps with a single ip with   
+running 24x7 on loonix debian vps with a single ip with:   
 ```bash
 while :; do python3 main.py --nozip --basic_metadata --DEBUG; sleep 100; done
 ```
@@ -162,5 +162,8 @@ https://archiveofsins.com/h/thread/6271290/#6289883
 
 > 1. Go to https://www.fakku.net/account/preferences
 > 2. Open the browser console (F12)
-> 3. Paste this into the console and press enter:  
-> $("form.js-start-disabled-button").first().append($('<input type="hidden" name="content_controversial" value="1" />')).find("button[type=submit]").attr("disabled", false).click();
+> 3. Paste this into the console and press enter:
+> ```jquery
+> $("form.js-start-disabled-button").first().append($('<input type="hidden" name="content_controversial" value="1" />')).find("button> > [type=submit]").attr("disabled", false).click();
+> ```
+> 4. It won't return anything but if you check controversial gallery it should work now.
