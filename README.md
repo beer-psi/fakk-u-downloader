@@ -1,7 +1,14 @@
 forked from https://github.com/Hikot0shi/fakku-downloader/
 
-warning tested only on https://www.fakku.net/tags/free  
-63 works downloaded without an issue (subscription, games, anime skipped)
+tested on 7558 urls   
+7558 works downloaded without an issue (games and anime skipped)   
+running 24x7 on loonix debian vps with a single ip with   
+```bash
+while :; do python3 main.py --nozip --basic_metadata --DEBUG; sleep 100; done
+```
+I never got banned, throttled or blocked by mitm cuckflare   
+default settings are sufficient   
+you don't have to change any wait time or timeouts   
 
 # jewcob-downloader
 
