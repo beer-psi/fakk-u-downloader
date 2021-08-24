@@ -118,7 +118,22 @@ def main():
         "--nometa",
         dest="metadata",
         action="store_false",
-        help=f"Keep gallery metadata in info.json file inside directory/archive. Default true",
+        help=f"By default this program keep gallery metadata in info.json file inside directory/archive. 3-4 parsers\
+                Setting this disables metadata file creation.",
+    )
+    argparser.add_argument(
+        "--basic_metadata",
+        dest="basic_metadata",
+        action="store_true",
+        help=f"Store only basic info in metadata info.json file. \
+         1 parser, fast, -Thumb -Price -Related -Chapters -Collections",
+    )
+    argparser.add_argument(
+        "--extra_metadata",
+        dest="extra_metadata",
+        action="store_true",
+        help=f"Store extra info in metadata info.json file.\
+        6+ parsers, slow +Comments",
     )
     args = argparser.parse_args()
     log_handlers = []
@@ -189,6 +204,15 @@ def main():
         _max=args.max,
         _zip=args.zip,
     )
+
+    if args.basic_metadata:
+        args.metadata = "basic"
+    elif args.extra_metadata:
+        args.metadata = "extra"
+    elif args.metadata:
+        args.metadata = "standard"
+    else:
+        args.metadata = "none"
 
     if not Path(args.cookies_file).is_file():
         logging.info(
