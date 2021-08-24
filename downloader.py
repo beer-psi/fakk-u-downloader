@@ -10,7 +10,7 @@ from binascii import a2b_base64
 from collections import OrderedDict
 from io import BytesIO
 from pickle import UnpicklingError
-from time import sleep
+from time import sleep, time
 
 import undetected_chromedriver as uc
 import urllib3.response
@@ -282,7 +282,7 @@ class JewcobDownloader:
             If True: launch browser in headless mode
             If False: launch browser with GUI
         """
-        log.debug("Initializing browser")
+        log.info("Initializing browser")
         if auth:
             self.__auth()
 
@@ -315,6 +315,8 @@ class JewcobDownloader:
             chrome_options=options,
             seleniumwire_options=seleniumwire_options,
         )
+        self.browser.header_overrides = {"Accept-Encoding": "identity"}
+
         self.browser.set_script_timeout(self.timeout)
         self.browser.set_page_load_timeout(self.timeout)
 
@@ -327,6 +329,7 @@ class JewcobDownloader:
         ]
 
         self.__set_cookies()
+        log.info("Browser initialized")
 
     def __set_cookies(self):
         """
@@ -335,24 +338,33 @@ class JewcobDownloader:
         log.debug("Loading cookies")
         self.waiting_loading_page(LOGIN_URL, is_reader_page=False)
         # set fakku local storage options
+        # UI Control Direction for Right to Left Content: Right to Left
+        # Read in Either Direction on First Page: Unticked
         # Page Display Mode: Singles with Spreads
         # Page Scaling: Original Size
         # Fit to Width if Overwidth: Unticked
         # Background Color: Gray
         # But Not When Viewing Two Pages: Unticked
         self.browser.execute_script(
+            "window.localStorage.setItem('fakku-uiControlDirection','rtl');"
+            "window.localStorage.setItem('fakku-uiFirstPageControlDirectionFlip','false');"
             "window.localStorage.setItem('fakku-twoPageMode','1');"
             "window.localStorage.setItem('fakku-pageScalingMode','none');"
             "window.localStorage.setItem('fakku-fitIfOverWidth','false');"
             "window.localStorage.setItem('fakku-backgroundColor','#7F7B7B');"
             "window.localStorage.setItem('fakku-suppressWidthFitForSpreads','false');"
         )
+        time_now = time()
         with open(self.cookies_file, "rb") as f:
             cookies = json.load(f)
             for cookie in cookies:
-                if "expiry" in cookie:
-                    cookie["expiry"] = int(cookie["expiry"])
-                    self.browser.add_cookie(cookie)
+                cookie["expiry"] = int(cookie["expiry"])
+                if cookie["name"] in {"fakku_sid", "fakku_zid"}:
+                    if cookie["expiry"] < time_now:
+                        logging.info("Expired cookies")
+                        logging.info("Remove cookies.json and try again")
+                        self.program_exit()
+                self.browser.add_cookie(cookie)
 
     def __auth(self):
         """
@@ -371,7 +383,7 @@ class JewcobDownloader:
             self.browser.find_element(By.ID, "username").send_keys(self.login)
         if not self.password is None:
             self.browser.find_element(By.ID, "password").send_keys(self.password)
-        self.browser.find_element(By.CSS_SELECTOR, 'button[class*="js-submit"]').click()
+        self.browser.find_element(By.CSS_SELECTOR, 'button[class^="js-submit"]').click()
 
         ready = input("Tab Enter to continue after you login...")
         with open(self.cookies_file, "w") as f:
@@ -457,7 +469,7 @@ class JewcobDownloader:
                             self.resp_page += 1
             sleep(self.wait)
 
-    def load_all(self, save_metadata=False):
+    def load_all(self, save_metadata="standard"):
         """
         Just main function
         open main page and first reader page, click the rest
@@ -491,7 +503,7 @@ class JewcobDownloader:
             self.timeout = TIMEOUT
             self.wait = WAIT
 
-            self.waiting_loading_page(url, is_reader_page=False)
+            self.waiting_loading_page(url, is_reader_page="main")
 
             log.debug("Checking if user is logged")
             try:
@@ -518,22 +530,16 @@ class JewcobDownloader:
 
             metadata0 = OrderedDict()
             log.debug("Parsing right side for metadata")
-            meta1 = self.browser.find_element(
-                By.CSS_SELECTOR, "div.content-right"
-            )
-            meta_title = meta1.find_element(By.CSS_SELECTOR, "div.content-name")
+            meta0 = self.browser.find_element(By.CSS_SELECTOR, "div.content-right")
+            meta_title = meta0.find_element(By.CSS_SELECTOR, "div.content-name")
             metadata0["Title"] = meta_title.text
             log.debug(meta_title.text)
-            meta_rows = meta1.find_elements(By.CSS_SELECTOR, "div.row")
+            meta_rows = meta0.find_elements(By.CSS_SELECTOR, "div.row")
             log.debug("Parsing right side rows")
             for meta_row in meta_rows:
-                meta_row_left = meta_row.find_element(
-                    By.CSS_SELECTOR, "div.row-left"
-                )
+                meta_row_left = meta_row.find_element(By.CSS_SELECTOR, "div.row-left")
                 log.debug(f"Parsing {meta_row_left.text}")
-                meta_row_right = meta_row.find_element(
-                    By.CSS_SELECTOR, "div.row-right"
-                )
+                meta_row_right = meta_row.find_element(By.CSS_SELECTOR, "div.row-right")
                 a_tags = meta_row_right.find_elements(By.CSS_SELECTOR, "a")
                 if a_tags:
                     values = []
@@ -545,20 +551,27 @@ class JewcobDownloader:
                         values = values[0]
                     metadata0[meta_row_left.text] = values
                 else:
-                    metadata0[meta_row_left.text] = meta_row_right.text
+                    if meta_row_left.text in {"Pages", "Favorites"}:
+                        metadata0[meta_row_left.text] = int(
+                            "".join(meta_row_right.text.split(" ")[0].split(","))
+                        )
+                    else:
+                        if meta_row_right.text == "No description has been written.":
+                            continue
+                        metadata0[meta_row_left.text] = meta_row_right.text
             log.debug(metadata0)
 
-            if 'Artist' in metadata0:
-                if type(metadata0['Artist']) is str:
-                    artist = [metadata0['Artist']]
+            if "Artist" in metadata0:
+                if type(metadata0["Artist"]) is str:
+                    artist = [metadata0["Artist"]]
                 else:
-                    artist = list(metadata0['Artist'])
+                    artist = list(metadata0["Artist"])
                 for art in artist:
                     art = fix_filename(art)
                 if len(artist) > 2:
-                    artist = 'Various'
+                    artist = "Various"
                 elif len(artist) == 2:
-                    artist = ', '.join(artist)
+                    artist = ", ".join(artist)
                 elif len(artist) == 1:
                     artist = artist[0]
                 else:
@@ -567,25 +580,25 @@ class JewcobDownloader:
                 artist = None
             log.debug(artist)
 
-            if 'Title' in metadata0:
-                title = metadata0['Title']
+            if "Title" in metadata0:
+                title = metadata0["Title"]
             else:
                 title = self.browser.find_element(By.TAG_NAME, "h1")
                 title = title.text
             title = fix_filename(title)
             log.debug(artist)
 
-            if 'Circle' in metadata0:
-                if type(metadata0['Circle']) is str:
-                    circle = [metadata0['Circle']]
+            if "Circle" in metadata0:
+                if type(metadata0["Circle"]) is str:
+                    circle = [metadata0["Circle"]]
                 else:
-                    circle = list(metadata0['Circle'])
+                    circle = list(metadata0["Circle"])
                 for art in circle:
                     art = fix_filename(art)
                 if len(circle) > 2:
-                    circle = 'Various'
+                    circle = "Various"
                 elif len(circle) == 2:
-                    circle = ', '.join(circle)
+                    circle = ", ".join(circle)
                 elif len(circle) == 1:
                     circle = circle[0]
                 else:
@@ -594,20 +607,20 @@ class JewcobDownloader:
                 circle = None
             log.debug(circle)
 
-            if 'Magazine' in metadata0:
-                if type(metadata0['Magazine']) is str:
-                    extra = [metadata0['Magazine']]
+            if "Magazine" in metadata0:
+                if type(metadata0["Magazine"]) is str:
+                    extra = [metadata0["Magazine"]]
                 else:
-                    extra = list(metadata0['Magazine'])
+                    extra = list(metadata0["Magazine"])
                 # remove New Illustration because it's not a magazine
-                if 'New Illustration' in extra:
-                    extra.remove('New Illustration')
+                if "New Illustration" in extra:
+                    extra.remove("New Illustration")
                 for art in extra:
                     art = fix_filename(art)
                 if len(extra) > 2:
-                    extra = 'Various'
+                    extra = "Various"
                 elif len(extra) == 2:
-                    extra = ', '.join(extra)
+                    extra = ", ".join(extra)
                 elif len(extra) == 1:
                     extra = extra[0]
                 else:
@@ -620,8 +633,8 @@ class JewcobDownloader:
                 extra = " (FAKKU)"
             log.debug(extra)
 
-            if 'Direction' in metadata0:
-                direction = metadata0['Direction']
+            if "Direction" in metadata0:
+                direction = metadata0["Direction"]
             else:
                 direction = "Right to Left"
             log.debug(direction)
@@ -647,82 +660,249 @@ class JewcobDownloader:
                 os.mkdir(response_folder)
 
             metadata = None
-            if save_metadata:
+            if save_metadata != "none":
                 log.debug("Parsing site for metadata")
                 try:
                     metadata = OrderedDict()
                     log.debug("Parsing left side")
                     metadata["URL"] = url
-                    thumb = self.browser.find_element(
-                        By.CSS_SELECTOR, "div.content-left"
-                    )
-                    thumb = thumb.find_element(By.CSS_SELECTOR, "img")
-                    thumb = thumb.get_attribute("src")
-                    log.debug(thumb)
-                    metadata["Thumb"] = thumb
+                    if save_metadata != "basic":
+                        meta1 = self.browser.find_element(
+                            By.CSS_SELECTOR, "div.content-left"
+                        )
+                        thumb = meta1.find_element(By.CSS_SELECTOR, "img")
+                        thumb = thumb.get_attribute("src")
+                        log.debug(thumb)
+                        metadata["Thumb"] = thumb
+
+                        price_container = meta1.find_element(
+                            By.CSS_SELECTOR, "div.price-container"
+                        )
+                        price = price_container.find_element(
+                            By.CSS_SELECTOR, "div.price"
+                        ).text
+                        if price:
+                            price = float(price[1:])
+                            log.debug(price)
+                            metadata["Price"] = price
 
                     for k, v in metadata0.items():
                         metadata[k] = v
 
-                    log.debug("Parsing bottom")
-                    meta2 = self.browser.find_elements(
-                        By.CSS_SELECTOR, 'div[class*="tab-content skinny-tab"]'
-                    )
-                    for meta_rest in meta2:
-                        meta_id = meta_rest.get_attribute("id")
-                        if "/related" in meta_id:
-                            log.debug("Parsing Related")
-                            div_book_titles = meta_rest.find_elements(
-                                By.CSS_SELECTOR, "div.book-title"
-                            )
-                            values = []
-                            for dbt in div_book_titles:
-                                a = dbt.find_element(By.CSS_SELECTOR, "a.content-title")
-                                ah = a.get_attribute("href")
-                                if ah not in values:
-                                    values.append(ah)
-                            if len(values) == 1:
-                                values = values[0]
-                            metadata["Related"] = values
-                        elif "/collections" in meta_id:
-                            log.debug("Parsing Collections")
-                            a_tags = meta_rest.find_element(By.CSS_SELECTOR, "div")
-                            a_tags = a_tags.find_elements(By.CSS_SELECTOR, "a")
-                            if a_tags:
+                    if save_metadata != "basic":
+                        log.debug("Parsing bottom")
+                        meta2 = self.browser.find_elements(
+                            By.CSS_SELECTOR, 'div[class^="tab-content skinny-tab"]'
+                        )
+                        for meta_rest in meta2:
+                            meta_id = meta_rest.get_attribute("id")
+                            if "/related" in meta_id:
+                                log.debug("Parsing Related")
+                                div_book_titles = meta_rest.find_elements(
+                                    By.CSS_SELECTOR, "div.book-title"
+                                )
                                 values = []
-                                for a in a_tags:
+                                for dbt in div_book_titles:
+                                    a = dbt.find_element(
+                                        By.CSS_SELECTOR, "a.content-title"
+                                    )
                                     ah = a.get_attribute("href")
-                                    values.append(ah)
+                                    if ah not in values:
+                                        values.append(ah)
                                 if len(values) == 1:
                                     values = values[0]
-                                metadata["Collections"] = values
-                        elif "/chapters" in meta_id:
-                            log.debug("Parsing Chapters")
-                            div_chapters = meta_rest.find_elements(
-                                By.CSS_SELECTOR, "div.chapter"
-                            )
-                            values = []
-                            for dc in div_chapters:
-                                dct = dc.find_element(
-                                    By.CSS_SELECTOR, "div.chapter-title"
+                                metadata["Related"] = values
+                            elif "/collections" in meta_id:
+                                log.debug("Parsing Collections")
+                                a_tags = meta_rest.find_element(By.CSS_SELECTOR, "div")
+                                a_tags = a_tags.find_elements(By.CSS_SELECTOR, "a")
+                                if a_tags:
+                                    values = []
+                                    for a in a_tags:
+                                        ah = a.get_attribute("href")
+                                        values.append(ah)
+                                    if len(values) == 1:
+                                        values = values[0]
+                                    metadata["Collections"] = values
+                            elif "/chapters" in meta_id:
+                                log.debug("Parsing Chapters")
+                                div_chapters = meta_rest.find_elements(
+                                    By.CSS_SELECTOR, "div.chapter"
                                 )
-                                a = dct.find_element(By.CSS_SELECTOR, "a")
-                                ah = a.get_attribute("href")
-                                if ah not in values:
-                                    values.append(ah)
-                            if len(values) == 1:
-                                values = values[0]
-                            metadata["Chapters"] = values
-                        else:
-                            pass
-                            # only comments are left but I don't want to put them in json metadata file
+                                cd = OrderedDict()
+                                for dc in div_chapters:
+                                    dcn = dc.find_element(
+                                        By.CSS_SELECTOR, "div.chapter-number"
+                                    )
+                                    cn = int(dcn.get_property("innerHTML"))
+                                    dct = dc.find_element(
+                                        By.CSS_SELECTOR, "div.chapter-title"
+                                    )
+                                    a = dct.find_element(By.CSS_SELECTOR, "a")
+                                    ah = a.get_attribute("href")
+                                    cd[cn] = ah
+                                metadata["Chapters"] = cd
+                            else:
+                                if save_metadata == "extra":
+                                    comments = []
+                                    chain = []
+                                    div_comments = meta_rest.find_elements(
+                                        By.CSS_SELECTOR, 'div[class^="comment"]'
+                                    )
+                                    for comment in div_comments:
+                                        comment_dict = OrderedDict()
+                                        comment_class = comment.get_attribute("class")
+                                        if comment_class == "comment-reply-textarea":
+                                            continue
+                                        log.debug(comment_class)
+
+                                        try:
+                                            comment_id = comment.find_element(
+                                                By.CSS_SELECTOR, "a"
+                                            )
+                                        except NoSuchElementException:
+                                            continue
+                                        comment_id = int(comment_id.get_attribute("id"))
+                                        log.debug(comment_id)
+                                        comment_dict["id"] = comment_id
+
+                                        comment_rank = int(
+                                            comment.find_element(
+                                                By.CSS_SELECTOR, "div.rank"
+                                            ).text
+                                        )
+                                        log.debug(comment_rank)
+                                        comment_dict["rank"] = comment_rank
+
+                                        comment_post_top = comment.find_element(
+                                            By.CSS_SELECTOR, "div.post-row-top"
+                                        )
+                                        comment_post_username = (
+                                            comment_post_top.find_element(
+                                                By.CSS_SELECTOR, "a"
+                                            ).text
+                                        )
+                                        log.debug(comment_post_username)
+                                        comment_dict["username"] = comment_post_username
+                                        try:
+                                            comment_post_alias = (
+                                                comment_post_top.find_element(
+                                                    By.CSS_SELECTOR, "strong"
+                                                ).text
+                                            )
+                                            log.debug(comment_post_alias)
+                                            comment_dict["alias"] = comment_post_alias
+                                        except NoSuchElementException:
+                                            pass
+                                        comment_posted = comment_post_top.find_element(
+                                            By.CSS_SELECTOR, "span"
+                                        )
+                                        comment_posted = comment_posted.get_attribute(
+                                            "title"
+                                        )
+                                        log.debug(comment_posted)
+                                        comment_dict["posted"] = comment_posted
+
+                                        comment_post_body = comment.find_element(
+                                            By.CSS_SELECTOR, "div.post-row-body"
+                                        )
+                                        try:
+                                            comment_review_title = (
+                                                comment_post_body.find_element(
+                                                    By.CSS_SELECTOR, "strong"
+                                                ).text
+                                            )
+                                            log.debug(comment_review_title)
+                                            comment_dict[
+                                                "review_title"
+                                            ] = comment_review_title
+                                        except NoSuchElementException:
+                                            pass
+                                        try:
+                                            comment_star_rating = (
+                                                comment_post_body.find_element(
+                                                    By.CSS_SELECTOR, "div.star-rating"
+                                                )
+                                            )
+                                            fs = 0
+                                            for (
+                                                fas
+                                            ) in comment_star_rating.find_elements(
+                                                By.CSS_SELECTOR, "i.fas.fa-star"
+                                            ):
+                                                fs += 1
+                                            es = 0
+                                            for (
+                                                far
+                                            ) in comment_star_rating.find_elements(
+                                                By.CSS_SELECTOR, "i.far.fa-star"
+                                            ):
+                                                es += 1
+                                            comment_star_rating = f"{fs}/{fs + es}"
+                                            log.debug(comment_star_rating)
+                                            comment_dict[
+                                                "star_rating"
+                                            ] = comment_star_rating
+                                        except NoSuchElementException:
+                                            pass
+                                        try:
+                                            comment_post_text = comment.find_element(
+                                                By.CSS_SELECTOR,
+                                                f"div[id=comment-{str(comment_id)}]",
+                                            ).text
+                                            log.debug(comment_post_text)
+                                            comment_dict["text"] = comment_post_text
+                                        except NoSuchElementException:
+                                            pass
+
+                                        try:
+                                            comment_edit_time = comment.find_element(
+                                                By.CSS_SELECTOR, "p"
+                                            ).text
+                                            log.debug(comment_edit_time)
+                                            comment_dict["edited"] = comment_edit_time
+                                        except NoSuchElementException:
+                                            pass
+
+                                        if (
+                                            comment_class
+                                            == "comment- comment-row comment-visible"
+                                        ):
+                                            if not chain:
+                                                chain = [0, 0, 0]
+                                            else:
+                                                chain[0] += 1
+                                                chain[1] = 0
+                                                chain[2] = 0
+                                        elif (
+                                            comment_class
+                                            == "comment-reply comment-row comment-visible"
+                                        ):
+                                            if not chain:
+                                                chain = [0, 0, 0]
+                                            else:
+                                                chain[1] += 1
+                                                chain[2] = 0
+                                        elif (
+                                            comment_class
+                                            == "comment-tree comment-row comment-visible"
+                                        ):
+                                            if not chain:
+                                                chain = [0, 0, 0]
+                                            else:
+                                                chain[2] += 1
+                                        chain2 = tuple(chain)
+                                        log.debug(chain2)
+                                        comment_dict["chain"] = chain2
+                                        comments.append(comment_dict)
+                                    metadata["Comments"] = comments
                 except Exception as meta_err:
-                    log.info(f'Metadata parser issue, please report url: {url}')
+                    log.info(f"Metadata parser issue, please report url: {url}")
                     log.info(str(meta_err))
                 log.debug(metadata)
 
-            if "Pages" in metadata:
-                page_count = int(metadata["Pages"].split(" ")[0])
+            if "Pages" in metadata0:
+                page_count = metadata0["Pages"]
             else:
                 # no "Pages" on gallery page, use 2 for now
                 page_count = 2
@@ -768,6 +948,7 @@ class JewcobDownloader:
 
                 else:
                     log.debug("Clicking next page")
+                    sleep(self.wait)
                     ui = self.browser.find_element(
                         By.CSS_SELECTOR, 'div.layer[data-name="UI"]'
                     )
@@ -837,11 +1018,12 @@ class JewcobDownloader:
                 # wait until read notification hides
                 WebDriverWait(self.browser, self.timeout).until(
                     EC.invisibility_of_element_located(
-                        (By.CSS_SELECTOR, 'div[class*="ui notify-container large"]')
+                        (By.CSS_SELECTOR, 'div[class^="ui notify-container large"]')
                     )
                 )
 
                 canvas_found = []
+                canvas_locs = []
                 images_found = []
 
                 log.debug("Parsing PageView layer for canvas/images")
@@ -857,6 +1039,16 @@ class JewcobDownloader:
                         )
                         if len(images_canvas) > 0:
                             for canvas in images_canvas:
+                                canvas_style = canvas.get_attribute("style")
+                                if "translate3d" in canvas_style:
+                                    canvas_loc = int(
+                                        canvas_style.split("translate3d(")[-1].split(
+                                            "px, "
+                                        )[0]
+                                    )
+                                else:
+                                    canvas_loc = 0
+                                canvas_locs.append(canvas_loc)
                                 widthc = canvas.size["width"]
                                 heightc = canvas.size["height"]
                                 if (widthc, heightc) not in ignore_size:
@@ -884,9 +1076,15 @@ class JewcobDownloader:
                 if direction == "Left to Right":
                     pass
                 elif direction == "Right to Left":
-                    images_found.reverse()
-                    canvas_found.reverse()
-                    pass
+                    if len(canvas_locs) > 0:
+                        if canvas_locs[0] == 0:
+                            pass
+                        else:
+                            images_found.reverse()
+                            canvas_found.reverse()
+                    else:
+                        images_found.reverse()
+                        canvas_found.reverse()
 
                 log.debug("Copy image from server response")
                 for img_url, page_num in zip(images_found, pages):
@@ -961,34 +1159,30 @@ class JewcobDownloader:
             del self.browser.requests  # delete old requests
 
             if len(self.resp_done) > 0:
-                if log.level == 10:
-                    resp_info_file = os.sep.join([response_folder, f"response_info.txt"])
+                if log.level != 10:
+                    resp_info_file = os.sep.join(
+                        [response_folder, f"response_info.txt"]
+                    )
                     with open(resp_info_file, "w") as file:
                         for k, v in self.resp_done.items():
                             file.write(f"{v}\t{k}\n")
 
-            if save_metadata:
+            if save_metadata != "none":
                 if metadata:
-                    new_page_count = None
                     new_pages = None
                     if "Pages" in metadata:
-                        page_count_info = int(metadata["Pages"].split(" ")[0])
+                        page_count_info = metadata["Pages"]
                         if page_count != page_count_info:
-                            new_page_count = page_count
+                            new_pages = page_count
                     else:
-                        new_page_count = page_count
-                    if new_page_count:
-                        if new_page_count > 1:
-                            new_pages = f"{str(new_page_count)} pages"
-                        elif new_page_count == 1:
-                            new_pages = f"{str(new_page_count)} page"
+                        new_pages = page_count
                     if new_pages:
                         log.debug("Updating page count in metadata info.json dump")
                         metadata2 = OrderedDict()
                         paged = False
                         for k, v in metadata.items():
                             if not paged:
-                                # trying to get "Pages" info at the same line in json file
+                                # trying to get "Pages" info at the same line each time in json file
                                 if k == "Favorites":
                                     metadata2["Pages"] = new_pages
                                     paged = True
@@ -1019,14 +1213,17 @@ class JewcobDownloader:
                             "info.json",
                         ]
                     )
-                    with open(json_info_file, "w") as f:
-                        json.dump(metadata, f, indent=True)
+                    with open(json_info_file, "w", encoding="utf-8") as f:
+                        json.dump(metadata, f, indent=True, ensure_ascii=False)
 
             if self.zip:
                 log.debug("Creating a cbz and deleting the image folder after creation")
                 archive_name = shutil.make_archive(folder_title, "cbz", manga_folder)
                 shutil.move(archive_name, self.root_manga_dir)
                 shutil.rmtree(manga_folder)
+
+            if log.level == 10:
+                shutil.rmtree(response_folder)
 
             logging.info(">> manga done!")
             with open(self.done_file, "a") as done_file_obj:
@@ -1114,6 +1311,7 @@ class JewcobDownloader:
         with open(done_file, "r") as donef:
             for line in donef:
                 done.add(line.replace("\n", ""))
+        log.debug(f"Done: {len(done)}")
 
         urls = []
         with open(urls_file, "r") as f:
@@ -1121,9 +1319,13 @@ class JewcobDownloader:
                 clean_line = line.replace("\n", "")
                 if clean_line not in done and clean_line not in urls:
                     urls.append(clean_line)
+        log.debug(f"Urls: {len(urls)}")
+        if len(urls) == 0:
+            log.info("Nothing to rip")
+            exit()
         return urls
 
-    def waiting_loading_page(self, url, is_reader_page=False):
+    def waiting_loading_page(self, url, is_reader_page=None):
         """
         Awaiting while page will load
         ---------------------------
@@ -1142,7 +1344,10 @@ class JewcobDownloader:
         if not is_reader_page:
             elem_xpath = "//link[@type='image/x-icon']"
         else:
-            elem_xpath = "//div[@data-name='PageView']"
+            if is_reader_page == "main":
+                elem_xpath = "//div[contains(concat(' ', normalize-space(@class), ' '), ' my-account ') and contains(concat(' ', normalize-space(@class), ' '), ' header-drop-down ')]"
+            else:
+                elem_xpath = "//div[@data-name='PageView']"
         elm_found = False
         tried = 0
         tried_2 = 0
