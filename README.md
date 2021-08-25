@@ -1,7 +1,7 @@
 forked from https://github.com/Hikot0shi/fakku-downloader/
 
-tested on 7558 urls   
-7558 works downloaded without an issue (games and anime skipped)   
+tested on 7595 urls   
+7595 works downloaded without an issue (games and anime skipped)   
 running 24x7 on loonix debian vps with a single ip with:   
 ```bash
 while :; do python3 main.py --nozip --basic_metadata --DEBUG; sleep 100; done
