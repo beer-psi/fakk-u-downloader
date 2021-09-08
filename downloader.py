@@ -1159,7 +1159,7 @@ class JewcobDownloader:
             del self.browser.requests  # delete old requests
 
             if len(self.resp_done) > 0:
-                if log.level != 10:
+                if log.level == 10:
                     resp_info_file = os.sep.join(
                         [response_folder, f"response_info.txt"]
                     )
@@ -1222,7 +1222,7 @@ class JewcobDownloader:
                 shutil.move(archive_name, self.root_manga_dir)
                 shutil.rmtree(manga_folder)
 
-            if log.level == 10:
+            if log.level != 10:
                 shutil.rmtree(response_folder)
 
             logging.info(">> manga done!")
