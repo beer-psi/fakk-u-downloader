@@ -59,7 +59,7 @@ USER_AGENT = None
 # Should a cbz archive file be created
 ZIP = False
 # script version
-version = "v0.0.6"
+version = "v0.0.7"
 
 # create script tag to put in html body/head
 js_name_todata = secrets.choice(string.ascii_letters) + "".join(
