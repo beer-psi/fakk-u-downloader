@@ -59,7 +59,7 @@ USER_AGENT = None
 # Should a cbz archive file be created
 ZIP = False
 # script version
-version = "v0.0.7"
+version = "v0.0.8"
 
 # create script tag to put in html body/head
 js_name_todata = secrets.choice(string.ascii_letters) + "".join(
@@ -383,7 +383,7 @@ class JewcobDownloader:
             self.browser.find_element(By.ID, "username").send_keys(self.login)
         if not self.password is None:
             self.browser.find_element(By.ID, "password").send_keys(self.password)
-        self.browser.find_element(By.CSS_SELECTOR, 'button[class^="js-submit"]').click()
+        self.browser.find_element(By.CSS_SELECTOR, 'button[class*="js-submit"]').click()
 
         ready = input("Tab Enter to continue after you login...")
         with open(self.cookies_file, "w") as f:
@@ -508,8 +508,10 @@ class JewcobDownloader:
             log.debug("Checking if user is logged")
             try:
                 login_check = self.browser.find_element(
-                    By.CSS_SELECTOR, "div.my-account.header-drop-down"
+                    By.CSS_SELECTOR, "span.inline-block.text-base.text-white.font-normal.select-none.hover\:text-red-300"
                 )
+                # todo check if my account in cn
+                cn = (login_check.get_property("textContent"))
             except:
                 logging.info("You aren't logged in")
                 logging.info("Probably expired cookies")
@@ -518,7 +520,7 @@ class JewcobDownloader:
 
             log.debug("Checking if gallery is available, green button")
             try:
-                bt = self.browser.find_element(By.CSS_SELECTOR, "a.button.icon.green")
+                bt = self.browser.find_element(By.CSS_SELECTOR, 'a[class^="button-green"]')
                 if "Start Reading" not in bt.text:
                     logging.info(f"{bt.text}: {url}")
                     urls_processed += 1
@@ -530,16 +532,20 @@ class JewcobDownloader:
 
             metadata0 = OrderedDict()
             log.debug("Parsing right side for metadata")
-            meta0 = self.browser.find_element(By.CSS_SELECTOR, "div.content-right")
-            meta_title = meta0.find_element(By.CSS_SELECTOR, "div.content-name")
+            meta0 = self.browser.find_element(By.CSS_SELECTOR, 'div[class^="block sm:table-cell relative w-full align-top"]')
+            meta_title = meta0.find_element(By.CSS_SELECTOR, "h1")
             metadata0["Title"] = meta_title.text
             log.debug(meta_title.text)
-            meta_rows = meta0.find_elements(By.CSS_SELECTOR, "div.row")
+            meta_rows = meta0.find_elements(By.CSS_SELECTOR, 'div[class^="table text-sm w-full"]')
             log.debug("Parsing right side rows")
             for meta_row in meta_rows:
-                meta_row_left = meta_row.find_element(By.CSS_SELECTOR, "div.row-left")
-                log.debug(f"Parsing {meta_row_left.text}")
-                meta_row_right = meta_row.find_element(By.CSS_SELECTOR, "div.row-right")
+                try:
+                    meta_row_left = meta_row.find_element(By.CSS_SELECTOR, 'div[class^="inline-block w-24 text-left align-top"]')
+                    left_text = meta_row_left.text
+                except NoSuchElementException as err:
+                    left_text = 'Tags'
+                log.debug(f"Parsing {left_text}")
+                meta_row_right = meta_row.find_element(By.CSS_SELECTOR, 'div[class^="table-cell w-full align-top text-left"]')
                 a_tags = meta_row_right.find_elements(By.CSS_SELECTOR, "a")
                 if a_tags:
                     values = []
@@ -549,16 +555,16 @@ class JewcobDownloader:
                         values.append(a.text)
                     if len(values) == 1:
                         values = values[0]
-                    metadata0[meta_row_left.text] = values
+                    metadata0[left_text] = values
                 else:
-                    if meta_row_left.text in {"Pages", "Favorites"}:
-                        metadata0[meta_row_left.text] = int(
+                    if left_text in {"Pages", "Favorites"}:
+                        metadata0[left_text] = int(
                             "".join(meta_row_right.text.split(" ")[0].split(","))
                         )
                     else:
                         if meta_row_right.text == "No description has been written.":
                             continue
-                        metadata0[meta_row_left.text] = meta_row_right.text
+                        metadata0[left_text] = meta_row_right.text
             log.debug(metadata0)
 
             if "Artist" in metadata0:
@@ -1345,7 +1351,7 @@ class JewcobDownloader:
             elem_xpath = "//link[@type='image/x-icon']"
         else:
             if is_reader_page == "main":
-                elem_xpath = "//div[contains(concat(' ', normalize-space(@class), ' '), ' my-account ') and contains(concat(' ', normalize-space(@class), ' '), ' header-drop-down ')]"
+                elem_xpath = "//div[contains(@class, 'group flex-1 relative align-top px-4 hidden sm:inline-block')]"
             else:
                 elem_xpath = "//div[@data-name='PageView']"
         elm_found = False
