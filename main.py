@@ -128,13 +128,13 @@ def main():
         help=f"Store only basic info in metadata info.json file. \
          1 parser, fast, -Thumb -Price -Related -Chapters -Collections",
     )
-    argparser.add_argument(
-        "--extra_metadata",
-        dest="extra_metadata",
-        action="store_true",
-        help=f"Store extra info in metadata info.json file.\
-        6+ parsers, slow +Comments",
-    )
+    #argparser.add_argument(
+    #    "--extra_metadata",
+    #    dest="extra_metadata",
+    #    action="store_true",
+    #    help=f"Store extra info in metadata info.json file.\
+    #    6+ parsers, slow +Comments",
+    #)
     args = argparser.parse_args()
     log_handlers = []
     if args.debug:
@@ -160,7 +160,7 @@ def main():
         level=log_level, format=log_formatter_file, handlers=log_handlers
     )
 
-    log = logging.getLogger(__name__)
+    log = logging.getLogger()
     if args.debug:
         log.debug(f"Version: %s", version)
         log.debug("Python %s - %s", sys.version, sys.platform)
@@ -207,8 +207,8 @@ def main():
 
     if args.basic_metadata:
         args.metadata = "basic"
-    elif args.extra_metadata:
-        args.metadata = "extra"
+    #elif args.extra_metadata:
+    #    args.metadata = "extra"
     elif args.metadata:
         args.metadata = "standard"
     else:
