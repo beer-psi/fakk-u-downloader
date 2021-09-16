@@ -27,7 +27,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from seleniumwire.webdriver import Chrome
 from tqdm import tqdm
 
-log = logging.getLogger(__name__)
+log = logging.getLogger()
 
 BASE_URL = "https://www.fakku.net"
 LOGIN_URL = f"{BASE_URL}/login/"
@@ -543,7 +543,22 @@ class JewcobDownloader:
                     meta_row_left = meta_row.find_element(By.CSS_SELECTOR, 'div[class^="inline-block w-24 text-left align-top"]')
                     left_text = meta_row_left.text
                 except NoSuchElementException as err:
-                    left_text = 'Tags'
+                    left_text = None
+                if not left_text:
+                    try:
+                        desc_left = meta_row.find_element(By.CSS_SELECTOR,
+                                                              'div[class^="table-cell w-full align-top text-left space-y-2"]')
+                        left_text = 'Description'
+                    except NoSuchElementException as err3:
+                        left_text = None
+                if not left_text:
+                    try:
+                        tags_left = meta_row.find_element(By.CSS_SELECTOR,
+                                                              'div[class^="table-cell w-full align-top text-left -mb-2"]')
+                        left_text = 'Tags'
+                    except NoSuchElementException as err:
+                        left_text = None
+
                 log.debug(f"Parsing {left_text}")
                 meta_row_right = meta_row.find_element(By.CSS_SELECTOR, 'div[class^="table-cell w-full align-top text-left"]')
                 a_tags = meta_row_right.find_elements(By.CSS_SELECTOR, "a")
@@ -674,7 +689,7 @@ class JewcobDownloader:
                     metadata["URL"] = url
                     if save_metadata != "basic":
                         meta1 = self.browser.find_element(
-                            By.CSS_SELECTOR, "div.content-left"
+                            By.CSS_SELECTOR, 'div[class^="block sm:inline-block relative w-full align-top p-4 text-center space-y-4"]'
                         )
                         thumb = meta1.find_element(By.CSS_SELECTOR, "img")
                         thumb = thumb.get_attribute("src")
@@ -682,35 +697,43 @@ class JewcobDownloader:
                         metadata["Thumb"] = thumb
 
                         price_container = meta1.find_element(
-                            By.CSS_SELECTOR, "div.price-container"
+                            By.CSS_SELECTOR, 'div[class^="rounded cursor-pointer right-0 bottom-0 m-1 sm:m-0 sm:right-2 sm:bottom-2 sm:left-auto"]'
                         )
-                        price = price_container.find_element(
-                            By.CSS_SELECTOR, "div.price"
-                        ).text
-                        if price:
+                        try:
+                            price_left = price_container.find_element(
+                                By.CSS_SELECTOR, 'div[class^="table w-auto text-right opacity-90 hover:opacity-100 js-purchase-product"]'
+                            )
+                            price = price_left.find_element(
+                                By.CSS_SELECTOR, "div"
+                            ).text
                             price = float(price[1:])
                             log.debug(price)
                             metadata["Price"] = price
+                        except NoSuchElementException as err:
+                            price = None
 
                     for k, v in metadata0.items():
                         metadata[k] = v
 
                     if save_metadata != "basic":
                         log.debug("Parsing bottom")
-                        meta2 = self.browser.find_elements(
-                            By.CSS_SELECTOR, 'div[class^="tab-content skinny-tab"]'
+                        meta2 = self.browser.find_element(
+                            By.CSS_SELECTOR, 'div[class^="col-span-full block js-tab-targets"]'
                         )
-                        for meta_rest in meta2:
+                        meta2d = self.browser.find_elements(
+                            By.CSS_SELECTOR, 'div'
+                        )
+                        for meta_rest in meta2d:
                             meta_id = meta_rest.get_attribute("id")
                             if "/related" in meta_id:
                                 log.debug("Parsing Related")
                                 div_book_titles = meta_rest.find_elements(
-                                    By.CSS_SELECTOR, "div.book-title"
+                                    By.CSS_SELECTOR, 'div[class^="overflow-hidden relative rounded shadow-lg"]'
                                 )
                                 values = []
                                 for dbt in div_book_titles:
                                     a = dbt.find_element(
-                                        By.CSS_SELECTOR, "a.content-title"
+                                        By.CSS_SELECTOR, "a"
                                     )
                                     ah = a.get_attribute("href")
                                     if ah not in values:
@@ -720,47 +743,53 @@ class JewcobDownloader:
                                 metadata["Related"] = values
                             elif "/collections" in meta_id:
                                 log.debug("Parsing Collections")
-                                a_tags = meta_rest.find_element(By.CSS_SELECTOR, "div")
+                                col = meta_rest.find_element(By.CSS_SELECTOR, 'em')
+                                cola = col.find_element(By.CSS_SELECTOR, 'a')
+                                colu = cola.get_attribute("href")
+                                a_tags = meta_rest.find_element(By.CSS_SELECTOR, 'div[class^="col-span-full w-full relative space-y-2"]')
                                 a_tags = a_tags.find_elements(By.CSS_SELECTOR, "a")
-                                if a_tags:
-                                    values = []
-                                    for a in a_tags:
-                                        ah = a.get_attribute("href")
-                                        values.append(ah)
-                                    if len(values) == 1:
-                                        values = values[0]
-                                    metadata["Collections"] = values
+                                col_dict = dict()
+                                values = []
+                                for a in a_tags:
+                                    ah = a.get_attribute("href")
+                                    values.append(ah)
+                                if len(values) == 1:
+                                    values = values[0]
+                                col_dict[colu] = values
+                                metadata["Collections"] = col_dict
                             elif "/chapters" in meta_id:
                                 log.debug("Parsing Chapters")
                                 div_chapters = meta_rest.find_elements(
-                                    By.CSS_SELECTOR, "div.chapter"
+                                    By.CSS_SELECTOR, 'div[class^="table relative w-full bg-white py-2 px-4 rounded dark:bg-gray-900"]'
                                 )
                                 cd = OrderedDict()
                                 for dc in div_chapters:
                                     dcn = dc.find_element(
-                                        By.CSS_SELECTOR, "div.chapter-number"
+                                        By.CSS_SELECTOR, 'div[class^="inline-block pr-2 text-right w-8 align-top text-sm"]'
                                     )
                                     cn = int(dcn.get_property("innerHTML"))
                                     dct = dc.find_element(
-                                        By.CSS_SELECTOR, "div.chapter-title"
+                                        By.CSS_SELECTOR, 'div[class^="table-cell w-full align-top text-left text-sm"]'
                                     )
                                     a = dct.find_element(By.CSS_SELECTOR, "a")
                                     ah = a.get_attribute("href")
                                     cd[cn] = ah
                                 metadata["Chapters"] = cd
                             else:
+                                pass
+                                """
                                 if save_metadata == "extra":
                                     comments = []
                                     chain = []
                                     div_comments = meta_rest.find_elements(
-                                        By.CSS_SELECTOR, 'div[class^="comment"]'
+                                        By.CSS_SELECTOR, 'div[class^="bg-white table p-4 w-full rounded space-y-2 dark:bg-gray-900"]'
                                     )
                                     for comment in div_comments:
                                         comment_dict = OrderedDict()
                                         comment_class = comment.get_attribute("class")
-                                        if comment_class == "comment-reply-textarea":
-                                            continue
-                                        log.debug(comment_class)
+                                        #if comment_class == "comment-reply-textarea":
+                                        #    continue
+                                        #log.debug(comment_class)
 
                                         try:
                                             comment_id = comment.find_element(
@@ -902,6 +931,7 @@ class JewcobDownloader:
                                         comment_dict["chain"] = chain2
                                         comments.append(comment_dict)
                                     metadata["Comments"] = comments
+                                """
                 except Exception as meta_err:
                     log.info(f"Metadata parser issue, please report url: {url}")
                     log.info(str(meta_err))
