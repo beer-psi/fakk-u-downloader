@@ -148,7 +148,7 @@ def fix_filename(filename):
     """
     Removes illegal characters from filename.
     """
-    log.debug("Fixing filename")
+    log.debug("Fixing string")
     filename = filename.replace("\n", "")
     filename = filename.replace("\r", "")
     filename = filename.replace("\t", "")
@@ -587,8 +587,8 @@ class JewcobDownloader:
                     artist = [metadata0["Artist"]]
                 else:
                     artist = list(metadata0["Artist"])
-                for art in artist:
-                    art = fix_filename(art)
+                for i, v in enumerate(artist):
+                    artist[i] = fix_filename(v)
                 if len(artist) > 2:
                     artist = "Various"
                 elif len(artist) == 2:
@@ -614,8 +614,8 @@ class JewcobDownloader:
                     circle = [metadata0["Circle"]]
                 else:
                     circle = list(metadata0["Circle"])
-                for art in circle:
-                    art = fix_filename(art)
+                for i, v in enumerate(circle):
+                    circle[i] = fix_filename(v)
                 if len(circle) > 2:
                     circle = "Various"
                 elif len(circle) == 2:
@@ -636,8 +636,8 @@ class JewcobDownloader:
                 # remove New Illustration because it's not a magazine
                 if "New Illustration" in extra:
                     extra.remove("New Illustration")
-                for art in extra:
-                    art = fix_filename(art)
+                for i, v in enumerate(extra):
+                    extra[i] = fix_filename(v)
                 if len(extra) > 2:
                     extra = "Various"
                 elif len(extra) == 2:
