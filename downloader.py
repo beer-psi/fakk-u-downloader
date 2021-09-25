@@ -228,7 +228,7 @@ def comicinfo_writer(info_meta, api_meta, file_path):
 
     ET.SubElement(r, "Title").text = api_meta["content"]["content_name"]
     ET.SubElement(r, "Web").text = api_meta["content"]["content_url"]
-    ET.SubElement(r, "PageCount").text = api_meta["content"]["content_pages"]
+    ET.SubElement(r, "PageCount").text = str(api_meta["content"]["content_pages"])
     ET.SubElement(r, "Summary").text = api_meta["content"]["content_description"]
     if "Circle" in info_meta:
         if type(info_meta["Circle"]) is list:
@@ -288,8 +288,8 @@ def comicinfo_writer(info_meta, api_meta, file_path):
         if type(info_meta["Magazine"]) is list:
             info_meta["Magazine"] = ", ".join(info_meta["Magazine"])
         sa.append(info_meta["Magazine"])
-    if "Collection" in info_meta:
-        for col in info_meta["Collection"].keys():
+    if "Collections" in info_meta:
+        for col in info_meta["Collections"].keys():
             sa.append(col)
     if len(sa) > 0:
         # it should be SeriesGroup but Komga treats that field as single string instead of ',' separated list
@@ -659,304 +659,317 @@ class JewcobDownloader:
                 continue
 
             metadata = OrderedDict()
-            if self.save_metadata != "none":
+            if self.save_metadata != "basic":
                 log.debug("Parsing right side for metadata")
-                meta0 = self.browser.find_element(
-                    By.CSS_SELECTOR,
-                    'div[class^="block sm:table-cell relative w-full align-top"]',
-                )
-                meta_title = meta0.find_element(By.CSS_SELECTOR, "h1")
-                meta_rows = meta0.find_elements(
-                    By.CSS_SELECTOR, 'div[class^="table text-sm w-full"]'
-                )
-                log.debug("Parsing right side rows")
-                for meta_row in meta_rows:
-                    try:
-                        meta_row_left = meta_row.find_element(
-                            By.CSS_SELECTOR,
-                            'div[class^="inline-block w-24 text-left align-top"]',
-                        )
-                        left_text = meta_row_left.text
-                    except NoSuchElementException as err:
-                        continue
-
-                    if left_text in [
-                        "Artist",
-                        "Parody",
-                        "Publisher",
-                        "Language",
-                        "Pages",
-                        "Direction",
-                    ]:
-                        continue
-
-                    log.debug(f"Parsing {left_text}")
-                    meta_row_right = meta_row.find_element(
-                        By.CSS_SELECTOR,
-                        'div[class^="table-cell w-full align-top text-left"]',
-                    )
-                    a_tags = meta_row_right.find_elements(By.CSS_SELECTOR, "a")
-                    if a_tags:
-                        values = []
-                        for a in a_tags:
-                            if a.text == "+":
-                                continue
-                            values.append(a.text)
-                        metadata[left_text] = values
-                    else:
-                        if left_text in {"Favorites"}:
-                            metadata[left_text] = int(
-                                "".join(meta_row_right.text.split(" ")[0].split(","))
-                            )
-                        else:
-                            metadata[left_text] = meta_row_right.text
-
                 try:
-                    log.debug("Parsing left side")
-                    if self.save_metadata != "basic":
-                        meta1 = self.browser.find_element(
-                            By.CSS_SELECTOR,
-                            'div[class^="block sm:inline-block relative w-full align-top p-4 text-center space-y-4"]',
-                        )
-                        price_container = meta1.find_element(
-                            By.CSS_SELECTOR,
-                            'div[class^="rounded cursor-pointer right-0 bottom-0 m-1 sm:m-0 sm:right-2 sm:bottom-2 sm:left-auto"]',
-                        )
+                    meta0 = self.browser.find_element(
+                        By.CSS_SELECTOR,
+                        'div[class^="block sm:table-cell relative w-full align-top"]',
+                    )
+                    meta_title = meta0.find_element(By.CSS_SELECTOR, "h1")
+                    meta_rows = meta0.find_elements(
+                        By.CSS_SELECTOR, 'div[class^="table text-sm w-full"]'
+                    )
+                    log.debug("Parsing right side rows")
+                    for meta_row in meta_rows:
                         try:
-                            price_left = price_container.find_element(
+                            meta_row_left = meta_row.find_element(
                                 By.CSS_SELECTOR,
-                                'div[class^="table w-auto text-right opacity-90 hover:opacity-100 js-purchase-product"]',
+                                'div[class^="inline-block w-24 text-left align-top"]',
                             )
-                            price = price_left.find_element(By.CSS_SELECTOR, "div").text
-                            price = float(price[1:])
-                            log.debug(price)
-                            metadata["Price"] = price
+                            left_text = meta_row_left.text
                         except NoSuchElementException as err:
-                            price = None
+                            continue
 
-                    if self.save_metadata != "basic":
-                        log.debug("Parsing bottom")
-                        meta2 = self.browser.find_element(
+                        if left_text in [
+                            "Artist",
+                            "Parody",
+                            "Publisher",
+                            "Language",
+                            "Pages",
+                            "Direction",
+                        ]:
+                            continue
+
+                        log.debug(f"Parsing {left_text}")
+                        meta_row_right = meta_row.find_element(
                             By.CSS_SELECTOR,
-                            'div[class^="col-span-full block js-tab-targets"]',
+                            'div[class^="table-cell w-full align-top text-left"]',
                         )
-                        meta2d = self.browser.find_elements(By.CSS_SELECTOR, "div")
-                        for meta_rest in meta2d:
-                            meta_id = meta_rest.get_attribute("id")
-                            if "/related" in meta_id:
-                                log.debug("Parsing Related")
-                                div_book_titles = meta_rest.find_elements(
-                                    By.CSS_SELECTOR,
-                                    'div[class^="overflow-hidden relative rounded shadow-lg"]',
-                                )
-                                values = []
-                                for dbt in div_book_titles:
-                                    a = dbt.find_element(By.CSS_SELECTOR, "a")
-                                    ah = a.get_attribute("href")
-                                    if ah not in values:
-                                        values.append(ah)
-                                if len(values) == 1:
-                                    values = values[0]
-                                metadata["Related"] = values
-                            elif "/collections" in meta_id:
-                                log.debug("Parsing Collections")
-                                col = meta_rest.find_element(By.CSS_SELECTOR, "em")
-                                cola = col.find_element(By.CSS_SELECTOR, "a")
-                                colu = cola.get_attribute("href")
-                                a_tags = meta_rest.find_element(
-                                    By.CSS_SELECTOR,
-                                    'div[class^="col-span-full w-full relative space-y-2"]',
-                                )
-                                a_tags = a_tags.find_elements(By.CSS_SELECTOR, "a")
-                                col_dict = dict()
-                                values = []
-                                for a in a_tags:
-                                    ah = a.get_attribute("href")
-                                    values.append(ah)
-                                if len(values) == 1:
-                                    values = values[0]
-                                col_dict[colu] = values
-                                metadata["Collections"] = col_dict
-                            elif "/chapters" in meta_id:
-                                log.debug("Parsing Chapters")
-                                div_chapters = meta_rest.find_elements(
-                                    By.CSS_SELECTOR,
-                                    'div[class^="table relative w-full bg-white py-2 px-4 rounded dark:bg-gray-900"]',
-                                )
-                                cd = OrderedDict()
-                                for dc in div_chapters:
-                                    dcn = dc.find_element(
-                                        By.CSS_SELECTOR,
-                                        'div[class^="inline-block pr-2 text-right w-8 align-top text-sm"]',
+                        a_tags = meta_row_right.find_elements(By.CSS_SELECTOR, "a")
+                        if a_tags:
+                            values = []
+                            for a in a_tags:
+                                if a.text == "+":
+                                    continue
+                                values.append(a.text)
+                            metadata[left_text] = values
+                        else:
+                            if left_text in {"Favorites"}:
+                                metadata[left_text] = int(
+                                    "".join(
+                                        meta_row_right.text.split(" ")[0].split(",")
                                     )
-                                    cn = int(dcn.get_property("innerHTML"))
-                                    dct = dc.find_element(
-                                        By.CSS_SELECTOR,
-                                        'div[class^="table-cell w-full align-top text-left text-sm"]',
-                                    )
-                                    a = dct.find_element(By.CSS_SELECTOR, "a")
-                                    ah = a.get_attribute("href")
-                                    cd[cn] = ah
-                                metadata["Chapters"] = cd
+                                )
                             else:
-                                pass
-                                """
-                                if self.save_metadata == "extra":
-                                    comments = []
-                                    chain = []
-                                    div_comments = meta_rest.find_elements(
-                                        By.CSS_SELECTOR, 'div[class^="bg-white table p-4 w-full rounded space-y-2 dark:bg-gray-900"]'
-                                    )
-                                    for comment in div_comments:
-                                        comment_dict = OrderedDict()
-                                        comment_class = comment.get_attribute("class")
-                                        #if comment_class == "comment-reply-textarea":
-                                        #    continue
-                                        #log.debug(comment_class)
-
-                                        try:
-                                            comment_id = comment.find_element(
-                                                By.CSS_SELECTOR, "a"
-                                            )
-                                        except NoSuchElementException:
-                                            continue
-                                        comment_id = int(comment_id.get_attribute("id"))
-                                        log.debug(comment_id)
-                                        comment_dict["id"] = comment_id
-
-                                        comment_rank = int(
-                                            comment.find_element(
-                                                By.CSS_SELECTOR, "div.rank"
-                                            ).text
-                                        )
-                                        log.debug(comment_rank)
-                                        comment_dict["rank"] = comment_rank
-
-                                        comment_post_top = comment.find_element(
-                                            By.CSS_SELECTOR, "div.post-row-top"
-                                        )
-                                        comment_post_username = (
-                                            comment_post_top.find_element(
-                                                By.CSS_SELECTOR, "a"
-                                            ).text
-                                        )
-                                        log.debug(comment_post_username)
-                                        comment_dict["username"] = comment_post_username
-                                        try:
-                                            comment_post_alias = (
-                                                comment_post_top.find_element(
-                                                    By.CSS_SELECTOR, "strong"
-                                                ).text
-                                            )
-                                            log.debug(comment_post_alias)
-                                            comment_dict["alias"] = comment_post_alias
-                                        except NoSuchElementException:
-                                            pass
-                                        comment_posted = comment_post_top.find_element(
-                                            By.CSS_SELECTOR, "span"
-                                        )
-                                        comment_posted = comment_posted.get_attribute(
-                                            "title"
-                                        )
-                                        log.debug(comment_posted)
-                                        comment_dict["posted"] = comment_posted
-
-                                        comment_post_body = comment.find_element(
-                                            By.CSS_SELECTOR, "div.post-row-body"
-                                        )
-                                        try:
-                                            comment_review_title = (
-                                                comment_post_body.find_element(
-                                                    By.CSS_SELECTOR, "strong"
-                                                ).text
-                                            )
-                                            log.debug(comment_review_title)
-                                            comment_dict[
-                                                "review_title"
-                                            ] = comment_review_title
-                                        except NoSuchElementException:
-                                            pass
-                                        try:
-                                            comment_star_rating = (
-                                                comment_post_body.find_element(
-                                                    By.CSS_SELECTOR, "div.star-rating"
-                                                )
-                                            )
-                                            fs = 0
-                                            for (
-                                                fas
-                                            ) in comment_star_rating.find_elements(
-                                                By.CSS_SELECTOR, "i.fas.fa-star"
-                                            ):
-                                                fs += 1
-                                            es = 0
-                                            for (
-                                                far
-                                            ) in comment_star_rating.find_elements(
-                                                By.CSS_SELECTOR, "i.far.fa-star"
-                                            ):
-                                                es += 1
-                                            comment_star_rating = f"{fs}/{fs + es}"
-                                            log.debug(comment_star_rating)
-                                            comment_dict[
-                                                "star_rating"
-                                            ] = comment_star_rating
-                                        except NoSuchElementException:
-                                            pass
-                                        try:
-                                            comment_post_text = comment.find_element(
-                                                By.CSS_SELECTOR,
-                                                f"div[id=comment-{str(comment_id)}]",
-                                            ).text
-                                            log.debug(comment_post_text)
-                                            comment_dict["text"] = comment_post_text
-                                        except NoSuchElementException:
-                                            pass
-
-                                        try:
-                                            comment_edit_time = comment.find_element(
-                                                By.CSS_SELECTOR, "p"
-                                            ).text
-                                            log.debug(comment_edit_time)
-                                            comment_dict["edited"] = comment_edit_time
-                                        except NoSuchElementException:
-                                            pass
-
-                                        if (
-                                            comment_class
-                                            == "comment- comment-row comment-visible"
-                                        ):
-                                            if not chain:
-                                                chain = [0, 0, 0]
-                                            else:
-                                                chain[0] += 1
-                                                chain[1] = 0
-                                                chain[2] = 0
-                                        elif (
-                                            comment_class
-                                            == "comment-reply comment-row comment-visible"
-                                        ):
-                                            if not chain:
-                                                chain = [0, 0, 0]
-                                            else:
-                                                chain[1] += 1
-                                                chain[2] = 0
-                                        elif (
-                                            comment_class
-                                            == "comment-tree comment-row comment-visible"
-                                        ):
-                                            if not chain:
-                                                chain = [0, 0, 0]
-                                            else:
-                                                chain[2] += 1
-                                        chain2 = tuple(chain)
-                                        log.debug(chain2)
-                                        comment_dict["chain"] = chain2
-                                        comments.append(comment_dict)
-                                    metadata["Comments"] = comments
-                                """
+                                metadata[left_text] = meta_row_right.text
                 except Exception as meta_err:
-                    log.info(f"Metadata parser issue, please report url: {url}")
+                    log.info(
+                        f"Metadata parser issue right side, please report url: {url}"
+                    )
+                    log.info(str(meta_err))
+
+                log.debug("Parsing left side")
+                try:
+                    meta1 = self.browser.find_element(
+                        By.CSS_SELECTOR,
+                        'div[class^="block sm:inline-block relative w-full align-top p-4 text-center space-y-4"]',
+                    )
+                    price_container = meta1.find_element(
+                        By.CSS_SELECTOR,
+                        'div[class^="rounded cursor-pointer right-0 bottom-0 m-1 sm:m-0 sm:right-2 sm:bottom-2 sm:left-auto"]',
+                    )
+                    try:
+                        price_left = price_container.find_element(
+                            By.CSS_SELECTOR,
+                            'div[class^="table w-auto text-right opacity-90 hover:opacity-100 js-purchase-product"]',
+                        )
+                        price = price_left.find_element(By.CSS_SELECTOR, "div").text
+                        price = float(price[1:])
+                        log.debug(price)
+                        metadata["Price"] = price
+                    except NoSuchElementException as err:
+                        price = None
+                except Exception as meta_err:
+                    log.info(
+                        f"Metadata parser issue left side, please report url: {url}"
+                    )
+                    log.info(str(meta_err))
+
+                log.debug("Parsing bottom")
+                try:
+                    meta2 = self.browser.find_element(
+                        By.CSS_SELECTOR,
+                        'div[class^="col-span-full block js-tab-targets"]',
+                    )
+                    meta2d = self.browser.find_elements(By.CSS_SELECTOR, "div")
+                    for meta_rest in meta2d:
+                        meta_id = meta_rest.get_attribute("id")
+                        if "/related" in meta_id:
+                            log.debug("Parsing Related")
+                            div_book_titles = meta_rest.find_elements(
+                                By.CSS_SELECTOR,
+                                'div[class^="overflow-hidden relative rounded shadow-lg"]',
+                            )
+                            values = []
+                            for dbt in div_book_titles:
+                                a = dbt.find_element(By.CSS_SELECTOR, "a")
+                                ah = a.get_attribute("href")
+                                if ah not in values:
+                                    values.append(ah)
+                            if len(values) == 1:
+                                values = values[0]
+                            metadata["Related"] = values
+                        elif "/collections" in meta_id:
+                            log.debug("Parsing Collections")
+                            col = meta_rest.find_element(By.CSS_SELECTOR, "em")
+                            cola = col.find_element(By.CSS_SELECTOR, "a")
+                            colu = cola.get_attribute("href")
+                            colt = cola.get_property("textContent")
+                            a_tags = meta_rest.find_element(
+                                By.CSS_SELECTOR,
+                                'div[class^="col-span-full w-full relative space-y-2"]',
+                            )
+                            a_tags = a_tags.find_elements(By.CSS_SELECTOR, "a")
+                            col_dict = dict()
+                            values = []
+                            for a in a_tags:
+                                ah = a.get_attribute("href")
+                                values.append(ah)
+                            if len(values) == 1:
+                                values = values[0]
+                            col_dict[colt] = (colu, values)
+                            metadata["Collections"] = col_dict
+                        elif "/chapters" in meta_id:
+                            log.debug("Parsing Chapters")
+                            div_chapters = meta_rest.find_elements(
+                                By.CSS_SELECTOR,
+                                'div[class^="table relative w-full bg-white py-2 px-4 rounded dark:bg-gray-900"]',
+                            )
+                            cd = OrderedDict()
+                            for dc in div_chapters:
+                                dcn = dc.find_element(
+                                    By.CSS_SELECTOR,
+                                    'div[class^="inline-block pr-2 text-right w-8 align-top text-sm"]',
+                                )
+                                cn = int(dcn.get_property("innerHTML"))
+                                dct = dc.find_element(
+                                    By.CSS_SELECTOR,
+                                    'div[class^="table-cell w-full align-top text-left text-sm"]',
+                                )
+                                a = dct.find_element(By.CSS_SELECTOR, "a")
+                                ah = a.get_attribute("href")
+                                cd[cn] = ah
+                            metadata["Chapters"] = cd
+                        else:
+                            pass
+                            """
+                            if self.save_metadata == "extra":
+                                comments = []
+                                chain = []
+                                div_comments = meta_rest.find_elements(
+                                    By.CSS_SELECTOR, 'div[class^="bg-white table p-4 w-full rounded space-y-2 dark:bg-gray-900"]'
+                                )
+                                for comment in div_comments:
+                                    comment_dict = OrderedDict()
+                                    comment_class = comment.get_attribute("class")
+                                    #if comment_class == "comment-reply-textarea":
+                                    #    continue
+                                    #log.debug(comment_class)
+
+                                    try:
+                                        comment_id = comment.find_element(
+                                            By.CSS_SELECTOR, "a"
+                                        )
+                                    except NoSuchElementException:
+                                        continue
+                                    comment_id = int(comment_id.get_attribute("id"))
+                                    log.debug(comment_id)
+                                    comment_dict["id"] = comment_id
+
+                                    comment_rank = int(
+                                        comment.find_element(
+                                            By.CSS_SELECTOR, "div.rank"
+                                        ).text
+                                    )
+                                    log.debug(comment_rank)
+                                    comment_dict["rank"] = comment_rank
+
+                                    comment_post_top = comment.find_element(
+                                        By.CSS_SELECTOR, "div.post-row-top"
+                                    )
+                                    comment_post_username = (
+                                        comment_post_top.find_element(
+                                            By.CSS_SELECTOR, "a"
+                                        ).text
+                                    )
+                                    log.debug(comment_post_username)
+                                    comment_dict["username"] = comment_post_username
+                                    try:
+                                        comment_post_alias = (
+                                            comment_post_top.find_element(
+                                                By.CSS_SELECTOR, "strong"
+                                            ).text
+                                        )
+                                        log.debug(comment_post_alias)
+                                        comment_dict["alias"] = comment_post_alias
+                                    except NoSuchElementException:
+                                        pass
+                                    comment_posted = comment_post_top.find_element(
+                                        By.CSS_SELECTOR, "span"
+                                    )
+                                    comment_posted = comment_posted.get_attribute(
+                                        "title"
+                                    )
+                                    log.debug(comment_posted)
+                                    comment_dict["posted"] = comment_posted
+
+                                    comment_post_body = comment.find_element(
+                                        By.CSS_SELECTOR, "div.post-row-body"
+                                    )
+                                    try:
+                                        comment_review_title = (
+                                            comment_post_body.find_element(
+                                                By.CSS_SELECTOR, "strong"
+                                            ).text
+                                        )
+                                        log.debug(comment_review_title)
+                                        comment_dict[
+                                            "review_title"
+                                        ] = comment_review_title
+                                    except NoSuchElementException:
+                                        pass
+                                    try:
+                                        comment_star_rating = (
+                                            comment_post_body.find_element(
+                                                By.CSS_SELECTOR, "div.star-rating"
+                                            )
+                                        )
+                                        fs = 0
+                                        for (
+                                            fas
+                                        ) in comment_star_rating.find_elements(
+                                            By.CSS_SELECTOR, "i.fas.fa-star"
+                                        ):
+                                            fs += 1
+                                        es = 0
+                                        for (
+                                            far
+                                        ) in comment_star_rating.find_elements(
+                                            By.CSS_SELECTOR, "i.far.fa-star"
+                                        ):
+                                            es += 1
+                                        comment_star_rating = f"{fs}/{fs + es}"
+                                        log.debug(comment_star_rating)
+                                        comment_dict[
+                                            "star_rating"
+                                        ] = comment_star_rating
+                                    except NoSuchElementException:
+                                        pass
+                                    try:
+                                        comment_post_text = comment.find_element(
+                                            By.CSS_SELECTOR,
+                                            f"div[id=comment-{str(comment_id)}]",
+                                        ).text
+                                        log.debug(comment_post_text)
+                                        comment_dict["text"] = comment_post_text
+                                    except NoSuchElementException:
+                                        pass
+
+                                    try:
+                                        comment_edit_time = comment.find_element(
+                                            By.CSS_SELECTOR, "p"
+                                        ).text
+                                        log.debug(comment_edit_time)
+                                        comment_dict["edited"] = comment_edit_time
+                                    except NoSuchElementException:
+                                        pass
+
+                                    if (
+                                        comment_class
+                                        == "comment- comment-row comment-visible"
+                                    ):
+                                        if not chain:
+                                            chain = [0, 0, 0]
+                                        else:
+                                            chain[0] += 1
+                                            chain[1] = 0
+                                            chain[2] = 0
+                                    elif (
+                                        comment_class
+                                        == "comment-reply comment-row comment-visible"
+                                    ):
+                                        if not chain:
+                                            chain = [0, 0, 0]
+                                        else:
+                                            chain[1] += 1
+                                            chain[2] = 0
+                                    elif (
+                                        comment_class
+                                        == "comment-tree comment-row comment-visible"
+                                    ):
+                                        if not chain:
+                                            chain = [0, 0, 0]
+                                        else:
+                                            chain[2] += 1
+                                    chain2 = tuple(chain)
+                                    log.debug(chain2)
+                                    comment_dict["chain"] = chain2
+                                    comments.append(comment_dict)
+                                metadata["Comments"] = comments
+                            """
+                except Exception as meta_err:
+                    log.info(f"Metadata parser issue bottom, please report url: {url}")
                     log.info(str(meta_err))
                 log.debug(metadata)
 
