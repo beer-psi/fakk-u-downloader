@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 import os
@@ -6,14 +7,14 @@ import secrets
 import shutil
 import string
 import sys
+import xml.etree.cElementTree as ET
 from binascii import a2b_base64
 from collections import OrderedDict
-from io import BytesIO
+from gzip import decompress
 from pickle import UnpicklingError
 from time import sleep, time
 
 import undetected_chromedriver as uc
-import urllib3.response
 from PIL import Image
 from selenium.common.exceptions import (
     JavascriptException,
@@ -36,8 +37,10 @@ MAX_DISPLAY_SETTINGS = [800, 600]
 # Path to headless driver
 if sys.platform == "win32":
     EXEC_PATH = "chromedriver.exe"
+    sp_c = "\\"
 else:
     EXEC_PATH = "chromedriver"
+    sp_c = "/"
 # File with manga urls
 URLS_FILE = "urls.txt"
 # File with completed urls
@@ -59,7 +62,7 @@ USER_AGENT = None
 # Should a cbz archive file be created
 ZIP = False
 # script version
-version = "v0.0.8"
+version = "v0.0.9"
 
 # create script tag to put in html body/head
 js_name_todata = secrets.choice(string.ascii_letters) + "".join(
@@ -86,7 +89,12 @@ js_script_in = js_script_in.encode()
 
 
 def append_images(
-    imgs, direction="horizontal", bg_color=(255, 255, 255), aligment="center"
+    imgs,
+    direction="horizontal",
+    bg_color=(255, 255, 255),
+    aligment="center",
+    src_type=None,
+    dirc=None,
 ):
     """
     Appends images in horizontal/vertical direction. Used for joining spreads.
@@ -102,6 +110,10 @@ def append_images(
         Concatenated image as a new PIL image object.
     """
     log.debug("Joining spreads")
+    if dirc == "Left to Right":
+        pass
+    else:
+        imgs.reverse()
     if type(imgs[0]) is str:
         images = map(Image.open, imgs)
     else:
@@ -116,7 +128,10 @@ def append_images(
         new_width = max(widths)
         new_height = sum(heights)
 
-    new_im = Image.new("RGB", (new_width, new_height), color=bg_color)
+    if src_type == "scrambled":
+        new_im = Image.new("RGBA", (new_width, new_height), color=bg_color)
+    else:
+        new_im = Image.new("RGB", (new_width, new_height), color=bg_color)
 
     if type(imgs[0]) is str:
         images = map(Image.open, imgs)
@@ -207,6 +222,84 @@ def _make_cbzfile(
 shutil.register_archive_format("cbz", _make_cbzfile, [], "CBZ file")
 
 
+def comicinfo_writer(info_meta, api_meta, file_path):
+    log.debug("Creating xml tree")
+    r = ET.Element("ComicInfo")
+
+    ET.SubElement(r, "Title").text = api_meta["content"]["content_name"]
+    ET.SubElement(r, "Web").text = api_meta["content"]["content_url"]
+    ET.SubElement(r, "PageCount").text = api_meta["content"]["content_pages"]
+    ET.SubElement(r, "Summary").text = api_meta["content"]["content_description"]
+    if "Circle" in info_meta:
+        if type(info_meta["Circle"]) is list:
+            info_meta["Circle"] = ", ".join(info_meta["Circle"])
+        if type(info_meta["Artist"]) is list:
+            info_meta["Artist"] = ", ".join(info_meta["Artist"])
+        ET.SubElement(r, "Writer").text = ", ".join(
+            (info_meta["Artist"], info_meta["Circle"])
+        )
+    else:
+        if type(info_meta["Artist"]) is list:
+            info_meta["Artist"] = ", ".join(info_meta["Artist"])
+        ET.SubElement(r, "Writer").text = info_meta["Artist"]
+    # there is no good way of getting gallery date (ok there is but it's rss)
+    # use timestamp from thumb if it fails use current time
+    try:
+        timestamp = int(api_meta["pages"]["1"]["thumb"].split("/")[-3].split("_")[-1])
+    except:
+        timestamp = None
+    try:
+        timestamp = int(api_meta["pages"]["1"]["thumb"].split("/")[-3].split("-")[-1])
+    except:
+        timestamp = None
+    if not timestamp:
+        timestamp = int(time())
+    dt = datetime.datetime.fromtimestamp(timestamp, datetime.timezone.utc)
+    ET.SubElement(r, "Year").text = dt.strftime("%Y")
+    ET.SubElement(r, "Month").text = dt.strftime("%m")
+    ET.SubElement(r, "Day").text = dt.strftime("%d")
+
+    tgs = []
+    for t in api_meta["content"]["content_tags"]:
+        tgs.append(t["attribute"])
+    # it should be Tags but Komga lacks support for Tags element
+    ET.SubElement(r, "Genre").text = ", ".join(tgs)
+    # needed when using Genre
+    ET.SubElement(r, "Series").text = api_meta["content"]["content_name"]
+    # ET.SubElement(r, "Series").text = 'FAKKU! Unlimited'
+    # ET.SubElement(r,"Genre").text = 'Hentai'
+
+    if type(info_meta["Publisher"]) is list:
+        info_meta["Publisher"] = ", ".join(info_meta["Publisher"])
+    ET.SubElement(r, "Publisher").text = info_meta["Publisher"]
+    ET.SubElement(r, "Manga").text = "YesAndRightToLeft"
+    ET.SubElement(r, "LanguageISO").text = "en"
+    ET.SubElement(r, "AgeRating").text = "X18+"
+    sa = []
+    if "Event" in info_meta:
+        if type(info_meta["Event"]) is list:
+            info_meta["Event"] = ", ".join(info_meta["Event"])
+        sa.append(info_meta["Event"])
+    if "Parody" in info_meta:
+        if type(info_meta["Parody"]) is list:
+            info_meta["Parody"] = ", ".join(info_meta["Parody"])
+        sa.append(info_meta["Parody"])
+    if "Magazine" in info_meta:
+        if type(info_meta["Magazine"]) is list:
+            info_meta["Magazine"] = ", ".join(info_meta["Magazine"])
+        sa.append(info_meta["Magazine"])
+    if "Collection" in info_meta:
+        for col in info_meta["Collection"].keys():
+            sa.append(col)
+    if len(sa) > 0:
+        # it should be SeriesGroup but Komga treats that field as single string instead of ',' separated list
+        ET.SubElement(r, "StoryArc").text = ", ".join(sa)
+    log.debug("Writing xml to file")
+    a = ET.ElementTree(r)
+    ET.indent(a, space="\t", level=0)
+    a.write(file_path, encoding="utf-8", xml_declaration=True)
+
+
 class JewcobDownloader:
     """
     Class which allows download manga.
@@ -233,6 +326,8 @@ class JewcobDownloader:
         password=None,
         _max=MAX,
         _zip=ZIP,
+        save_metadata=True,
+        comicinfo=False,
     ):
         """
         param: urls_file -- string name of .txt file with urls
@@ -269,6 +364,11 @@ class JewcobDownloader:
         self.password = password
         self.max = _max
         self.zip = _zip
+        self.save_metadata = save_metadata
+        self.comicinfo = comicinfo
+        self.fakku_json = {}
+        self.type = None
+        self.done = 0
 
     def init_browser(self, auth=False, gui=False):
         """
@@ -324,7 +424,7 @@ class JewcobDownloader:
             self.browser.set_window_size(*self.default_display)
         self.browser.response_interceptor = self.interceptor
         self.browser.scopes = [
-            ".*books.fakku.net/images/.*",
+            ".*books.fakku.net/.*",
             ".*fakku.net/hentai/.*/read/page/.*",
         ]
 
@@ -340,7 +440,7 @@ class JewcobDownloader:
         # set fakku local storage options
         # UI Control Direction for Right to Left Content: Right to Left
         # Read in Either Direction on First Page: Unticked
-        # Page Display Mode: Singles with Spreads
+        # Page Display Mode: Singles Pages Only
         # Page Scaling: Original Size
         # Fit to Width if Overwidth: Unticked
         # Background Color: Gray
@@ -348,7 +448,7 @@ class JewcobDownloader:
         self.browser.execute_script(
             "window.localStorage.setItem('fakku-uiControlDirection','rtl');"
             "window.localStorage.setItem('fakku-uiFirstPageControlDirectionFlip','false');"
-            "window.localStorage.setItem('fakku-twoPageMode','1');"
+            "window.localStorage.setItem('fakku-twoPageMode','0');"
             "window.localStorage.setItem('fakku-pageScalingMode','none');"
             "window.localStorage.setItem('fakku-fitIfOverWidth','false');"
             "window.localStorage.setItem('fakku-backgroundColor','#7F7B7B');"
@@ -379,6 +479,15 @@ class JewcobDownloader:
         self.browser = Chrome(executable_path=self.driver_path, chrome_options=options)
         self.browser.set_window_size(*self.default_display)
         self.browser.get(LOGIN_URL)
+        # it probably doesn't work but at least it won't throw an exception
+        try:
+            h1 = self.browser.find_element(By.CSS_SELECTOR, "h1")
+            h1 = h1.get_property("textContent")
+            if "One more step" in h1:
+                ready = input("Tab Enter to continue after you solved the captcha...")
+        except NoSuchElementException:
+            pass
+
         if not self.login is None:
             self.browser.find_element(By.ID, "username").send_keys(self.login)
         if not self.password is None:
@@ -414,13 +523,11 @@ class JewcobDownloader:
                 return None
 
             if "Content-Encoding" in response.headers:
-                # let urlib3.response take care of response.body encoding
-                urlib3_response = urllib3.response.HTTPResponse(
-                    reason=response.reason,
-                    headers=response.headers,
-                    body=BytesIO(response.body),
-                )
-                response.body = urlib3_response.data
+                try:
+                    gzip_response = decompress(response.body)
+                    response.body = gzip_response
+                except Exception as err:
+                    log.debug(err)
                 del response.headers["Content-Encoding"]
 
             # modify response body
@@ -430,27 +537,42 @@ class JewcobDownloader:
             html2 = parsed_html[:h_index] + js_script_in + parsed_html[h_index:]
             response.body = html2
             log.debug("Response body modified")
+        elif "books.fakku.net" in request.url and "/images/" not in request.url:
+            if not self.fakku_json:
 
-    def get_response_images(self, img_num, save_path, zpad):
+                resp_body = response.body
+                if "Content-Encoding" in response.headers:
+                    try:
+                        gzip_response = decompress(response.body)
+                        resp_body = gzip_response
+                    except Exception as err:
+                        log.debug(err)
+                body = resp_body.decode("utf-8")
+                self.fakku_json = json.loads(body)
+
+    def get_response_images(self, page, save_path, zpad):
         """
         Saves original images sended by fakku server, scrambled and unscrambled
         """
-        log.debug("Get response images")
-        while len(list(self.resp_done.values())) < int(img_num):
-            all_requests = None
-            while not all_requests:
-                try:
-                    all_requests = self.browser.requests
-                except UnpicklingError:
-                    sleep(self.wait)
-                except EOFError:
-                    sleep(self.wait)
-                except FileNotFoundError:
-                    sleep(self.wait)
-            for request in all_requests:
-                if request.response:
-                    if request.url.startswith("https://books.fakku.net/images/manga"):
-                        if request.url not in self.resp_done:
+        if "response_path" not in self.fakku_json["pages"][page]:
+            num = self.fakku_json["pages"][page]["page"]
+            resp_url = self.fakku_json["pages"][page]["image"]
+            image_path = None
+            log.debug("Get response images")
+            while not image_path:
+                all_requests = None
+                while not all_requests:
+                    try:
+                        all_requests = self.browser.requests
+                    except UnpicklingError:
+                        sleep(self.wait)
+                    except EOFError:
+                        sleep(self.wait)
+                    except FileNotFoundError:
+                        sleep(self.wait)
+                for request in all_requests:
+                    if request.response:
+                        if request.url == resp_url:
                             resp_file_name = request.url.split("/")[-1]
                             resp_file_type = request.response.headers[
                                 "Content-Type"
@@ -460,16 +582,16 @@ class JewcobDownloader:
                             resp_destination_file = os.sep.join(
                                 [
                                     save_path,
-                                    f"{self.resp_page:0{zpad}d}.{resp_file_type}",
+                                    f"{num:0{zpad}d}.{resp_file_type}",
                                 ]
                             )
                             with open(resp_destination_file, "wb") as file:
                                 file.write(resp_data)
-                            self.resp_done[request.url] = resp_destination_file
-                            self.resp_page += 1
-            sleep(self.wait)
+                            image_path = resp_destination_file
+                sleep(self.wait)
+            self.fakku_json["pages"][page]["response_path"] = image_path
 
-    def load_all(self, save_metadata="standard"):
+    def load_all(self):
         """
         Just main function
         open main page and first reader page, click the rest
@@ -502,16 +624,20 @@ class JewcobDownloader:
             logging.info(url)
             self.timeout = TIMEOUT
             self.wait = WAIT
+            self.fakku_json = {}
+            self.type = None
+            self.done = 0
 
             self.waiting_loading_page(url, is_reader_page="main")
 
             log.debug("Checking if user is logged")
             try:
                 login_check = self.browser.find_element(
-                    By.CSS_SELECTOR, "span.inline-block.text-base.text-white.font-normal.select-none.hover\:text-red-300"
+                    By.CSS_SELECTOR,
+                    "span.inline-block.text-base.text-white.font-normal.select-none.hover\:text-red-300",
                 )
                 # todo check if my account in cn
-                cn = (login_check.get_property("textContent"))
+                cn = login_check.get_property("textContent")
             except:
                 logging.info("You aren't logged in")
                 logging.info("Probably expired cookies")
@@ -520,7 +646,9 @@ class JewcobDownloader:
 
             log.debug("Checking if gallery is available, green button")
             try:
-                bt = self.browser.find_element(By.CSS_SELECTOR, 'a[class^="button-green"]')
+                bt = self.browser.find_element(
+                    By.CSS_SELECTOR, 'a[class^="button-green"]'
+                )
                 if "Start Reading" not in bt.text:
                     logging.info(f"{bt.text}: {url}")
                     urls_processed += 1
@@ -530,211 +658,100 @@ class JewcobDownloader:
                 urls_processed += 1
                 continue
 
-            metadata0 = OrderedDict()
-            log.debug("Parsing right side for metadata")
-            meta0 = self.browser.find_element(By.CSS_SELECTOR, 'div[class^="block sm:table-cell relative w-full align-top"]')
-            meta_title = meta0.find_element(By.CSS_SELECTOR, "h1")
-            metadata0["Title"] = meta_title.text
-            log.debug(meta_title.text)
-            meta_rows = meta0.find_elements(By.CSS_SELECTOR, 'div[class^="table text-sm w-full"]')
-            log.debug("Parsing right side rows")
-            for meta_row in meta_rows:
-                try:
-                    meta_row_left = meta_row.find_element(By.CSS_SELECTOR, 'div[class^="inline-block w-24 text-left align-top"]')
-                    left_text = meta_row_left.text
-                except NoSuchElementException as err:
-                    left_text = None
-                if not left_text:
+            metadata = OrderedDict()
+            if self.save_metadata != "none":
+                log.debug("Parsing right side for metadata")
+                meta0 = self.browser.find_element(
+                    By.CSS_SELECTOR,
+                    'div[class^="block sm:table-cell relative w-full align-top"]',
+                )
+                meta_title = meta0.find_element(By.CSS_SELECTOR, "h1")
+                meta_rows = meta0.find_elements(
+                    By.CSS_SELECTOR, 'div[class^="table text-sm w-full"]'
+                )
+                log.debug("Parsing right side rows")
+                for meta_row in meta_rows:
                     try:
-                        desc_left = meta_row.find_element(By.CSS_SELECTOR,
-                                                              'div[class^="table-cell w-full align-top text-left space-y-2"]')
-                        left_text = 'Description'
-                    except NoSuchElementException as err3:
-                        left_text = None
-                if not left_text:
-                    try:
-                        tags_left = meta_row.find_element(By.CSS_SELECTOR,
-                                                              'div[class^="table-cell w-full align-top text-left -mb-2"]')
-                        left_text = 'Tags'
+                        meta_row_left = meta_row.find_element(
+                            By.CSS_SELECTOR,
+                            'div[class^="inline-block w-24 text-left align-top"]',
+                        )
+                        left_text = meta_row_left.text
                     except NoSuchElementException as err:
-                        left_text = None
+                        continue
 
-                log.debug(f"Parsing {left_text}")
-                meta_row_right = meta_row.find_element(By.CSS_SELECTOR, 'div[class^="table-cell w-full align-top text-left"]')
-                a_tags = meta_row_right.find_elements(By.CSS_SELECTOR, "a")
-                if a_tags:
-                    values = []
-                    for a in a_tags:
-                        if a.text == "+":
-                            continue
-                        values.append(a.text)
-                    if len(values) == 1:
-                        values = values[0]
-                    metadata0[left_text] = values
-                else:
-                    if left_text in {"Pages", "Favorites"}:
-                        metadata0[left_text] = int(
-                            "".join(meta_row_right.text.split(" ")[0].split(","))
-                        )
-                    else:
-                        if meta_row_right.text == "No description has been written.":
-                            continue
-                        metadata0[left_text] = meta_row_right.text
-            log.debug(metadata0)
+                    if left_text in [
+                        "Artist",
+                        "Parody",
+                        "Publisher",
+                        "Language",
+                        "Pages",
+                        "Direction",
+                    ]:
+                        continue
 
-            if "Artist" in metadata0:
-                if type(metadata0["Artist"]) is str:
-                    artist = [metadata0["Artist"]]
-                else:
-                    artist = list(metadata0["Artist"])
-                for i, v in enumerate(artist):
-                    artist[i] = fix_filename(v)
-                if len(artist) > 2:
-                    artist = "Various"
-                elif len(artist) == 2:
-                    artist = ", ".join(artist)
-                elif len(artist) == 1:
-                    artist = artist[0]
-                else:
-                    artist = None
-            else:
-                artist = None
-            log.debug(artist)
-
-            if "Title" in metadata0:
-                title = metadata0["Title"]
-            else:
-                title = self.browser.find_element(By.TAG_NAME, "h1")
-                title = title.text
-            title = fix_filename(title)
-            log.debug(artist)
-
-            if "Circle" in metadata0:
-                if type(metadata0["Circle"]) is str:
-                    circle = [metadata0["Circle"]]
-                else:
-                    circle = list(metadata0["Circle"])
-                for i, v in enumerate(circle):
-                    circle[i] = fix_filename(v)
-                if len(circle) > 2:
-                    circle = "Various"
-                elif len(circle) == 2:
-                    circle = ", ".join(circle)
-                elif len(circle) == 1:
-                    circle = circle[0]
-                else:
-                    circle = None
-            else:
-                circle = None
-            log.debug(circle)
-
-            if "Magazine" in metadata0:
-                if type(metadata0["Magazine"]) is str:
-                    extra = [metadata0["Magazine"]]
-                else:
-                    extra = list(metadata0["Magazine"])
-                # remove New Illustration because it's not a magazine
-                if "New Illustration" in extra:
-                    extra.remove("New Illustration")
-                for i, v in enumerate(extra):
-                    extra[i] = fix_filename(v)
-                if len(extra) > 2:
-                    extra = "Various"
-                elif len(extra) == 2:
-                    extra = ", ".join(extra)
-                elif len(extra) == 1:
-                    extra = extra[0]
-                else:
-                    extra = None
-            else:
-                extra = None
-            if extra:
-                extra = f" ({extra})"
-            else:
-                extra = " (FAKKU)"
-            log.debug(extra)
-
-            if "Direction" in metadata0:
-                direction = metadata0["Direction"]
-            else:
-                direction = "Right to Left"
-            log.debug(direction)
-
-            if artist:
-                if circle:
-                    folder_title = (
-                        "[" + circle + " (" + artist + ")" + "] " + title + extra
+                    log.debug(f"Parsing {left_text}")
+                    meta_row_right = meta_row.find_element(
+                        By.CSS_SELECTOR,
+                        'div[class^="table-cell w-full align-top text-left"]',
                     )
-                else:
-                    folder_title = "[" + artist + "] " + title + extra
-            elif circle:
-                folder_title = "[" + circle + "] " + title + extra
-            else:
-                folder_title = title + extra
-            manga_folder = os.sep.join([self.root_manga_dir, folder_title])
-            if not os.path.exists(manga_folder):
-                os.mkdir(manga_folder)
-            log.debug(manga_folder)
-            manga_abs_path = os.path.abspath(manga_folder)
-            response_folder = os.sep.join([self.root_response_dir, folder_title])
-            if not os.path.exists(response_folder):
-                os.mkdir(response_folder)
+                    a_tags = meta_row_right.find_elements(By.CSS_SELECTOR, "a")
+                    if a_tags:
+                        values = []
+                        for a in a_tags:
+                            if a.text == "+":
+                                continue
+                            values.append(a.text)
+                        metadata[left_text] = values
+                    else:
+                        if left_text in {"Favorites"}:
+                            metadata[left_text] = int(
+                                "".join(meta_row_right.text.split(" ")[0].split(","))
+                            )
+                        else:
+                            metadata[left_text] = meta_row_right.text
 
-            metadata = None
-            if save_metadata != "none":
-                log.debug("Parsing site for metadata")
                 try:
-                    metadata = OrderedDict()
                     log.debug("Parsing left side")
-                    metadata["URL"] = url
-                    if save_metadata != "basic":
+                    if self.save_metadata != "basic":
                         meta1 = self.browser.find_element(
-                            By.CSS_SELECTOR, 'div[class^="block sm:inline-block relative w-full align-top p-4 text-center space-y-4"]'
+                            By.CSS_SELECTOR,
+                            'div[class^="block sm:inline-block relative w-full align-top p-4 text-center space-y-4"]',
                         )
-                        thumb = meta1.find_element(By.CSS_SELECTOR, "img")
-                        thumb = thumb.get_attribute("src")
-                        log.debug(thumb)
-                        metadata["Thumb"] = thumb
-
                         price_container = meta1.find_element(
-                            By.CSS_SELECTOR, 'div[class^="rounded cursor-pointer right-0 bottom-0 m-1 sm:m-0 sm:right-2 sm:bottom-2 sm:left-auto"]'
+                            By.CSS_SELECTOR,
+                            'div[class^="rounded cursor-pointer right-0 bottom-0 m-1 sm:m-0 sm:right-2 sm:bottom-2 sm:left-auto"]',
                         )
                         try:
                             price_left = price_container.find_element(
-                                By.CSS_SELECTOR, 'div[class^="table w-auto text-right opacity-90 hover:opacity-100 js-purchase-product"]'
+                                By.CSS_SELECTOR,
+                                'div[class^="table w-auto text-right opacity-90 hover:opacity-100 js-purchase-product"]',
                             )
-                            price = price_left.find_element(
-                                By.CSS_SELECTOR, "div"
-                            ).text
+                            price = price_left.find_element(By.CSS_SELECTOR, "div").text
                             price = float(price[1:])
                             log.debug(price)
                             metadata["Price"] = price
                         except NoSuchElementException as err:
                             price = None
 
-                    for k, v in metadata0.items():
-                        metadata[k] = v
-
-                    if save_metadata != "basic":
+                    if self.save_metadata != "basic":
                         log.debug("Parsing bottom")
                         meta2 = self.browser.find_element(
-                            By.CSS_SELECTOR, 'div[class^="col-span-full block js-tab-targets"]'
+                            By.CSS_SELECTOR,
+                            'div[class^="col-span-full block js-tab-targets"]',
                         )
-                        meta2d = self.browser.find_elements(
-                            By.CSS_SELECTOR, 'div'
-                        )
+                        meta2d = self.browser.find_elements(By.CSS_SELECTOR, "div")
                         for meta_rest in meta2d:
                             meta_id = meta_rest.get_attribute("id")
                             if "/related" in meta_id:
                                 log.debug("Parsing Related")
                                 div_book_titles = meta_rest.find_elements(
-                                    By.CSS_SELECTOR, 'div[class^="overflow-hidden relative rounded shadow-lg"]'
+                                    By.CSS_SELECTOR,
+                                    'div[class^="overflow-hidden relative rounded shadow-lg"]',
                                 )
                                 values = []
                                 for dbt in div_book_titles:
-                                    a = dbt.find_element(
-                                        By.CSS_SELECTOR, "a"
-                                    )
+                                    a = dbt.find_element(By.CSS_SELECTOR, "a")
                                     ah = a.get_attribute("href")
                                     if ah not in values:
                                         values.append(ah)
@@ -743,10 +760,13 @@ class JewcobDownloader:
                                 metadata["Related"] = values
                             elif "/collections" in meta_id:
                                 log.debug("Parsing Collections")
-                                col = meta_rest.find_element(By.CSS_SELECTOR, 'em')
-                                cola = col.find_element(By.CSS_SELECTOR, 'a')
+                                col = meta_rest.find_element(By.CSS_SELECTOR, "em")
+                                cola = col.find_element(By.CSS_SELECTOR, "a")
                                 colu = cola.get_attribute("href")
-                                a_tags = meta_rest.find_element(By.CSS_SELECTOR, 'div[class^="col-span-full w-full relative space-y-2"]')
+                                a_tags = meta_rest.find_element(
+                                    By.CSS_SELECTOR,
+                                    'div[class^="col-span-full w-full relative space-y-2"]',
+                                )
                                 a_tags = a_tags.find_elements(By.CSS_SELECTOR, "a")
                                 col_dict = dict()
                                 values = []
@@ -760,16 +780,19 @@ class JewcobDownloader:
                             elif "/chapters" in meta_id:
                                 log.debug("Parsing Chapters")
                                 div_chapters = meta_rest.find_elements(
-                                    By.CSS_SELECTOR, 'div[class^="table relative w-full bg-white py-2 px-4 rounded dark:bg-gray-900"]'
+                                    By.CSS_SELECTOR,
+                                    'div[class^="table relative w-full bg-white py-2 px-4 rounded dark:bg-gray-900"]',
                                 )
                                 cd = OrderedDict()
                                 for dc in div_chapters:
                                     dcn = dc.find_element(
-                                        By.CSS_SELECTOR, 'div[class^="inline-block pr-2 text-right w-8 align-top text-sm"]'
+                                        By.CSS_SELECTOR,
+                                        'div[class^="inline-block pr-2 text-right w-8 align-top text-sm"]',
                                     )
                                     cn = int(dcn.get_property("innerHTML"))
                                     dct = dc.find_element(
-                                        By.CSS_SELECTOR, 'div[class^="table-cell w-full align-top text-left text-sm"]'
+                                        By.CSS_SELECTOR,
+                                        'div[class^="table-cell w-full align-top text-left text-sm"]',
                                     )
                                     a = dct.find_element(By.CSS_SELECTOR, "a")
                                     ah = a.get_attribute("href")
@@ -778,7 +801,7 @@ class JewcobDownloader:
                             else:
                                 pass
                                 """
-                                if save_metadata == "extra":
+                                if self.save_metadata == "extra":
                                     comments = []
                                     chain = []
                                     div_comments = meta_rest.find_elements(
@@ -937,114 +960,205 @@ class JewcobDownloader:
                     log.info(str(meta_err))
                 log.debug(metadata)
 
-            if "Pages" in metadata0:
-                page_count = metadata0["Pages"]
-            else:
-                # no "Pages" on gallery page, use 2 for now
-                page_count = 2
+            page_count = 2
             log.debug(page_count)
 
-            self.resp_done = OrderedDict()
-            self.resp_page = 1
+            folder_title = url.split("/")
+            if url.endswith("/"):
+                folder_title = folder_title[-2]
+            else:
+                folder_title = folder_title[-1]
 
             logging.info(f'Downloading "{folder_title}" manga.')
+
+            log.debug("First page, testing injection")
+            js_test = False
+            while not js_test:
+                self.waiting_loading_page(f"{url}/read/page/1", is_reader_page=True)
+                js_script_test = """
+                var dataURL = HTMLCanvasElement.%s;
+                return dataURL;
+                """ % (
+                    js_name_todata,
+                )
+                try:
+                    jt = self.browser.execute_script(js_script_test)
+                    # jt result should be empty dict {}
+                    if type(jt) is dict:
+                        js_test = True
+                    else:
+                        js_test = False
+                        logging.info("retry")
+                except JavascriptException:
+                    pass
+                sleep(self.wait)
+
+            log.debug(self.fakku_json["content"].keys())
+
+            metadata_api = OrderedDict()
+            log.debug("Parsing api response for metadata")
+
+            metadata_api["URL"] = self.fakku_json["content"]["content_url"]
+            metadata_api["Title"] = self.fakku_json["content"]["content_name"]
+
+            content_artists = []
+            for a in self.fakku_json["content"]["content_artists"]:
+                content_artists.append(a["attribute"])
+            metadata_api["Artist"] = content_artists
+
+            content_series = []
+            for s in self.fakku_json["content"]["content_series"]:
+                content_series.append(s["attribute"])
+            metadata_api["Parody"] = content_series
+
+            content_publishers = []
+            for p in self.fakku_json["content"]["content_publishers"]:
+                content_publishers.append(p["attribute"])
+            metadata_api["Publisher"] = content_publishers
+
+            metadata_api["Language"] = self.fakku_json["content"]["content_language"]
+            metadata_api["Pages"] = self.fakku_json["content"]["content_pages"]
+
+            content_description = self.fakku_json["content"]["content_description"]
+            metadata_api["Description"] = content_description
+            if "content_direction" in self.fakku_json["content"]:
+                metadata_api["Direction"] = self.fakku_json["content"][
+                    "content_direction"
+                ]
+
+            content_tags = []
+            for t in self.fakku_json["content"]["content_tags"]:
+                content_tags.append(t["attribute"])
+            metadata_api["Tags"] = content_tags
+
+            metadata_api["Thumb"] = self.fakku_json["pages"]["1"]["thumb"]
+
+            log.debug(metadata_api)
+
+            if "key_data" in self.fakku_json:
+                self.type = "scrambled"
+            else:
+                self.type = "unscrambled"
+
+            if "Artist" in metadata_api:
+                artist = metadata_api["Artist"]
+                for i, v in enumerate(artist):
+                    artist[i] = fix_filename(v)
+                if len(artist) > 2:
+                    artist = "Various"
+                elif len(artist) == 2:
+                    artist = ", ".join(artist)
+                elif len(artist) == 1:
+                    artist = artist[0]
+                else:
+                    artist = None
+            else:
+                artist = None
+            log.debug(artist)
+
+            if "Title" in metadata_api:
+                title = metadata_api["Title"]
+                title = fix_filename(title)
+            else:
+                title = None
+            log.debug(title)
+
+            if "Circle" in metadata:
+                circle = metadata["Circle"]
+                for i, v in enumerate(circle):
+                    circle[i] = fix_filename(v)
+                if len(circle) > 2:
+                    circle = "Various"
+                elif len(circle) == 2:
+                    circle = ", ".join(circle)
+                elif len(circle) == 1:
+                    circle = circle[0]
+                else:
+                    circle = None
+            else:
+                circle = None
+            log.debug(circle)
+
+            if "Magazine" in metadata:
+                extra = metadata["Magazine"]
+                # remove New Illustration from name because it's not a magazine
+                if "New Illustration" in extra:
+                    extra.remove("New Illustration")
+                for i, v in enumerate(extra):
+                    extra[i] = fix_filename(v)
+                if len(extra) > 2:
+                    extra = "Various"
+                elif len(extra) == 2:
+                    extra = ", ".join(extra)
+                elif len(extra) == 1:
+                    extra = extra[0]
+                else:
+                    extra = None
+            else:
+                extra = None
+            if extra:
+                extra = f" ({extra})"
+            else:
+                extra = " (FAKKU)"
+            log.debug(extra)
+
+            if "Direction" in metadata_api:
+                direction = metadata_api["Direction"]
+            else:
+                direction = "Right to Left"
+            log.debug(direction)
+
+            if artist:
+                if circle:
+                    folder_title = (
+                        "[" + circle + " (" + artist + ")" + "] " + title + extra
+                    )
+                else:
+                    folder_title = "[" + artist + "] " + title + extra
+            elif circle:
+                folder_title = "[" + circle + "] " + title + extra
+            else:
+                folder_title = title + extra
+            manga_folder = os.sep.join([self.root_manga_dir, folder_title])
+            if not os.path.exists(manga_folder):
+                os.mkdir(manga_folder)
+            log.debug(manga_folder)
+            manga_abs_path = os.path.abspath(manga_folder)
+            response_folder = os.sep.join([self.root_response_dir, folder_title])
+            if not os.path.exists(response_folder):
+                os.mkdir(response_folder)
+
+            for k, v in metadata_api.items():
+                metadata[k] = v
+            log.debug(metadata)
+
+            page_count = metadata["Pages"]
+            if page_count > 1000:
+                padd = 4
+            elif page_count > 100:
+                padd = 3
+            elif page_count > 10:
+                padd = 2
+            else:
+                padd = 2
+
+            spreads = dict()
+            for spread in self.fakku_json["spreads"]:
+                left = str(spread[0])
+                right = str(spread[-1])
+                if left == right:
+                    continue
+                else:
+                    spreads[right] = (left, right)
 
             progress_bar = tqdm(
                 total=page_count, desc="Working...", leave=False, position=0
             )
 
-            page_num = 1
+            for page in self.fakku_json["pages"]:
 
-            while page_num <= page_count:
-                if page_num == 1:
-                    # injection test
-                    log.debug("First page, testing injection")
-                    js_test = False
-                    while not js_test:
-                        self.waiting_loading_page(
-                            f"{url}/read/page/{page_num}", is_reader_page=True
-                        )
-                        js_script_test = """
-                        var dataURL = HTMLCanvasElement.%s;
-                        return dataURL;
-                        """ % (
-                            js_name_todata,
-                        )
-                        try:
-                            jt = self.browser.execute_script(js_script_test)
-                            # jt result should be empty dict {}
-                            if type(jt) is dict:
-                                js_test = True
-                            else:
-                                js_test = False
-                                logging.info("retry")
-                        except JavascriptException:
-                            pass
-                        sleep(self.wait)
-
-                else:
-                    log.debug("Clicking next page")
-                    sleep(self.wait)
-                    ui = self.browser.find_element(
-                        By.CSS_SELECTOR, 'div.layer[data-name="UI"]'
-                    )
-                    ui.click()
-
-                if page_count > 1000:
-                    padd = 4
-                elif page_count > 100:
-                    padd = 3
-                elif page_count > 10:
-                    padd = 2
-                else:
-                    padd = 2
-
-                # get first page response image
-                self.get_response_images(page_num, response_folder, padd)
-
-                # waiting for bottom layer menu, gallery control, detecting spreads
-                spread = False
-                first_spread = False
-                second_spread = False
-                page_js_page = self.browser.find_element(
-                    By.CSS_SELECTOR, ".page.js-page"
-                )
-                divider = self.browser.find_element(
-                    By.CSS_SELECTOR, ".divider.js-divider"
-                )
-                count_js_count = self.browser.find_element(
-                    By.CSS_SELECTOR, ".count.js-count"
-                )
-                divider = divider.get_property("innerHTML")
-                if divider == "-":
-                    spread = True
-                    first_spread = page_js_page.get_property("innerHTML")
-                    first_spread = int(first_spread)
-                    second_spread = count_js_count.get_property("innerHTML")
-                    second_spread = int(second_spread)
-                    pages = [first_spread, second_spread]
-                else:
-                    page_count_3 = count_js_count.get_property("innerHTML")
-                    page_count_3 = int(page_count_3)
-                    if page_count_3 != page_count:
-                        page_count = page_count_3
-                        progress_bar.total = page_count
-                        progress_bar.refresh()
-                    pages = [page_num]
-                log.debug(page_count)
-
-                if page_count > 1000:
-                    padd = 4
-                elif page_count > 100:
-                    padd = 3
-                elif page_count > 10:
-                    padd = 2
-                else:
-                    padd = 2
-
-                for page_num in pages:
-                    # get next page response image
-                    self.get_response_images(page_num, response_folder, padd)
+                # get page response image
+                self.get_response_images(page, response_folder, padd)
 
                 # wait untill loader hides itsefl
                 WebDriverWait(self.browser, self.timeout).until(
@@ -1058,199 +1172,162 @@ class JewcobDownloader:
                     )
                 )
 
-                canvas_found = []
-                canvas_locs = []
-                images_found = []
+                page_num = self.fakku_json["pages"][page]["page"]
 
-                log.debug("Parsing PageView layer for canvas/images")
-                while len(canvas_found) != len(pages) and len(images_found) != len(
-                    pages
-                ):
-                    try:
-                        page_view = self.browser.find_element(
-                            By.CSS_SELECTOR, 'div.layer[data-name="PageView"]'
-                        )
-                        images_canvas = page_view.find_elements(
-                            By.CSS_SELECTOR, "canvas"
-                        )
-                        if len(images_canvas) > 0:
-                            for canvas in images_canvas:
-                                canvas_style = canvas.get_attribute("style")
-                                if "translate3d" in canvas_style:
-                                    canvas_loc = int(
-                                        canvas_style.split("translate3d(")[-1].split(
-                                            "px, "
-                                        )[0]
-                                    )
-                                else:
-                                    canvas_loc = 0
-                                canvas_locs.append(canvas_loc)
-                                widthc = canvas.size["width"]
-                                heightc = canvas.size["height"]
-                                if (widthc, heightc) not in ignore_size:
-                                    canvas_found.append(canvas)
-                                    if len(canvas_found) == len(pages):
-                                        break
-                        else:
-                            images = page_view.find_elements(By.CSS_SELECTOR, "img")
-                            for img_url in images:
-                                img_url = img_url.get_attribute("src")
-                                if img_url:
-                                    if img_url in self.resp_done:
-                                        images_found.append(img_url)
-                                    elif "/thumbs/" in img_url:
-                                        pass
-                                    else:
-                                        logging.info(img_url)
-                                        logging.info("Issue when image not in response")
-                    except StaleElementReferenceException as err:
-                        pass
-                    sleep(self.wait)
-
-                fin_img = []
-
-                if direction == "Left to Right":
-                    pass
-                elif direction == "Right to Left":
-                    if len(canvas_locs) > 0:
-                        if canvas_locs[0] == 0:
+                if self.type == "scrambled":
+                    log.debug("Parsing PageView layer for canvas")
+                    canvas_found = None
+                    while not canvas_found:
+                        try:
+                            page_view = self.browser.find_element(
+                                By.CSS_SELECTOR, 'div.layer[data-name="PageView"]'
+                            )
+                            images_canvas = page_view.find_elements(
+                                By.CSS_SELECTOR, "canvas"
+                            )
+                            if len(images_canvas) > 0:
+                                for canvas in images_canvas:
+                                    widthc = canvas.size["width"]
+                                    heightc = canvas.size["height"]
+                                    if (widthc, heightc) not in ignore_size:
+                                        canvas_found = canvas
+                        except StaleElementReferenceException as err:
                             pass
-                        else:
-                            images_found.reverse()
-                            canvas_found.reverse()
-                    else:
-                        images_found.reverse()
-                        canvas_found.reverse()
+                        sleep(self.wait)
 
-                log.debug("Copy image from server response")
-                for img_url, page_num in zip(images_found, pages):
-                    ext = self.resp_done[img_url].split(".")[-1]
-                    destination_file = os.sep.join(
-                        [manga_abs_path, f"{page_num:0{padd}d}.{ext}"]
-                    )
-                    if spread:
-                        if pages.index(page_num) == 0:
-                            destination_file = os.sep.join(
-                                [manga_abs_path, f"{page_num:0{padd}d}b.{ext}"]
-                            )
-                        elif pages.index(page_num) == 1:
-                            destination_file = os.sep.join(
-                                [manga_abs_path, f"{page_num:0{padd}d}c.{ext}"]
-                            )
-                    shutil.copy(self.resp_done[img_url], destination_file)
-                    fin_img.append(destination_file)
-                    progress_bar.update(1)
-
-                log.debug("Get all images from canvas")
-                for c, page_num in zip(canvas_found, pages):
+                    log.debug("Get image from canvas")
                     destination_file = os.sep.join(
                         [manga_abs_path, f"{page_num:0{padd}d}.png"]
                     )
-                    if spread:
-                        if pages.index(page_num) == 0:
-                            destination_file = os.sep.join(
-                                [manga_abs_path, f"{page_num:0{padd}d}b.png"]
-                            )
-                        elif pages.index(page_num) == 1:
-                            destination_file = os.sep.join(
-                                [manga_abs_path, f"{page_num:0{padd}d}c.png"]
-                            )
-
                     js_script = f"""
                     var dataURL = HTMLCanvasElement.%s.call(arguments[0], \"image/png\");
                     return dataURL;
                     """ % (
                         js_name_todata,
                     )
-                    rendered_image_data_url = self.browser.execute_script(js_script, c)
+
+                    rendered_image_data_url = self.browser.execute_script(
+                        js_script, canvas_found
+                    )
 
                     response_data = a2b_base64(rendered_image_data_url.split(",")[1])
 
                     with open(destination_file, "wb") as f:
                         f.write(response_data)
-                    fin_img.append(destination_file)
-                    progress_bar.update(1)
+                else:
+                    log.debug("Copy image from server response")
+                    resp_img = self.fakku_json["pages"][page]["response_path"]
+                    ext = resp_img.split(".")[-1]
+                    destination_file = os.sep.join(
+                        [manga_abs_path, f"{page_num:0{padd}d}.{ext}"]
+                    )
+                    shutil.copy(resp_img, destination_file)
+                self.fakku_json["pages"][page]["image_path"] = destination_file
+                log.debug(destination_file)
 
-                if spread:
-                    if sys.platform == "win32":
-                        sp_c = "\\"
-                    else:
-                        sp_c = "/"
-                    nam1 = fin_img[0].split(sp_c)[-1].split(".")[0][:-1]
-                    nam2 = fin_img[1].split(sp_c)[-1].split(".")[0][:-1]
-                    spread_name = nam1 + "-" + nam2
+                if page in spreads:
+                    log.debug("Creating spread")
+                    left = spreads[page][0]
+                    right = spreads[page][-1]
+                    fin_img = []
+                    imL = self.fakku_json["pages"][left]["image_path"]
+                    fin_img.append(imL)
+                    imR = self.fakku_json["pages"][right]["image_path"]
+                    fin_img.append(imR)
+
+                    namL = imL.split(sp_c)[-1].split(".")[0]
+                    extL = imL.split(sp_c)[-1].split(".")[-1]
+                    namR = imR.split(sp_c)[-1].split(".")[0]
+                    extR = imR.split(sp_c)[-1].split(".")[-1]
+
+                    spread_name = namL + "-" + namR
                     destination_file_spread = os.sep.join(
                         [manga_abs_path, f"{spread_name}a.png"]
                     )
+
                     combo = append_images(
-                        fin_img, direction="horizontal", aligment="none"
+                        fin_img,
+                        direction="horizontal",
+                        aligment="none",
+                        src_type=self.type,
+                        dirc=direction,
                     )
                     combo.save(destination_file_spread)
+
+                    destination_file_L = os.sep.join(
+                        [manga_abs_path, f"{namL}b.{extL}"]
+                    )
+                    destination_file_R = os.sep.join(
+                        [manga_abs_path, f"{namR}c.{extR}"]
+                    )
+
+                    shutil.move(imL, destination_file_L)
+                    self.fakku_json["pages"][left]["image_path"] = destination_file_L
+                    shutil.move(imR, destination_file_R)
+                    self.fakku_json["pages"][right]["image_path"] = destination_file_R
+
                     log.debug(destination_file_spread)
 
-                page_num += 1
-                sleep(self.wait)
+                progress_bar.update()
+
+                if self.done < len(self.fakku_json["pages"]):
+                    log.debug("Clicking next page")
+                    ui = self.browser.find_element(
+                        By.CSS_SELECTOR, 'div.layer[data-name="UI"]'
+                    )
+                    ui.click()
+                    self.done += 1
+                    sleep(self.wait)
             progress_bar.close()
 
-            del self.browser.requests  # delete old requests
+            # delete old requests
+            del self.browser.requests
 
-            if len(self.resp_done) > 0:
+            if self.done > 0:
                 if log.level == 10:
-                    resp_info_file = os.sep.join(
-                        [response_folder, f"response_info.txt"]
-                    )
-                    with open(resp_info_file, "w") as file:
-                        for k, v in self.resp_done.items():
-                            file.write(f"{v}\t{k}\n")
+                    resp_info_file = os.sep.join([response_folder, f"fakku_data.json"])
+                    cks = self.browser.get_cookies()
+                    for cookie in cks:
+                        if cookie["name"] in {"_c", "fakku_zid"}:
+                            self.fakku_json[cookie["name"]] = cookie["value"]
 
-            if save_metadata != "none":
-                if metadata:
-                    new_pages = None
-                    if "Pages" in metadata:
-                        page_count_info = metadata["Pages"]
-                        if page_count != page_count_info:
-                            new_pages = page_count
-                    else:
-                        new_pages = page_count
-                    if new_pages:
-                        log.debug("Updating page count in metadata info.json dump")
-                        metadata2 = OrderedDict()
-                        paged = False
-                        for k, v in metadata.items():
-                            if not paged:
-                                # trying to get "Pages" info at the same line each time in json file
-                                if k == "Favorites":
-                                    metadata2["Pages"] = new_pages
-                                    paged = True
-                                elif k == "Direction":
-                                    metadata2["Pages"] = new_pages
-                                    paged = True
-                                elif k == "Description":
-                                    metadata2["Pages"] = new_pages
-                                    paged = True
-                                elif k == "Tags":
-                                    metadata2["Pages"] = new_pages
-                                    paged = True
-                                elif k == "Related":
-                                    metadata2["Pages"] = new_pages
-                                    paged = True
-                                elif k == "Chapters":
-                                    metadata2["Pages"] = new_pages
-                                    paged = True
-                                elif k == "Collections":
-                                    metadata2["Pages"] = new_pages
-                                    paged = True
-                            metadata2[k] = v
-                        metadata = metadata2
-                    log.debug("Dumping metadata in info.json file")
-                    json_info_file = os.sep.join(
+                    json.dump(
+                        self.fakku_json,
+                        open(resp_info_file, "w", encoding="utf-8"),
+                        indent=True,
+                        ensure_ascii=False,
+                    )
+
+            if self.save_metadata != "none":
+                log.debug("Dumping metadata in info.json file")
+                json_info_file = os.sep.join(
+                    [
+                        manga_folder,
+                        "info.json",
+                    ]
+                )
+
+                metd = OrderedDict()
+                sorted_d = sorted(metadata.items(), key=lambda x: x[0])
+                for sd in sorted_d:
+                    sdd = sd[1]
+                    if type(sdd) is list:
+                        if len(sdd) == 1:
+                            sdd = sd[1][0]
+                    metd[sd[0]] = sdd
+
+                with open(json_info_file, "w", encoding="utf-8") as f:
+                    json.dump(metd, f, indent=True, ensure_ascii=False)
+
+                if self.comicinfo and self.save_metadata != "basic":
+                    log.debug("Dumping metadata in ComicInfo.xml file")
+                    comic_info_file = os.sep.join(
                         [
                             manga_folder,
-                            "info.json",
+                            "ComicInfo.xml",
                         ]
                     )
-                    with open(json_info_file, "w", encoding="utf-8") as f:
-                        json.dump(metadata, f, indent=True, ensure_ascii=False)
+                    comicinfo_writer(metd, self.fakku_json, comic_info_file)
 
             if self.zip:
                 log.debug("Creating a cbz and deleting the image folder after creation")
@@ -1271,6 +1348,7 @@ class JewcobDownloader:
             sleep(self.wait)
         self.program_exit()
 
+    '''
     def load_urls_from_collection(self, collection_url):
         """
         Function which records the manga URLs inside a collection
@@ -1330,6 +1408,7 @@ class JewcobDownloader:
             sleep(self.wait)
 
         return page_count
+    '''
 
     def __get_urls_list(self, urls_file, done_file):
         """
