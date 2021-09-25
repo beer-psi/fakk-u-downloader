@@ -18,16 +18,16 @@ from downloader import (
 
 def main():
     argparser = argparse.ArgumentParser()
-    argparser.add_argument(
-        "-z",
-        "--collection_url",
-        type=str,
-        default=None,
-        help=f"Give a collection URL that will be parsed and loaded into urls.txt \
-            The normal operations of downloading manga images will not happen while this \
-            parameter is set. \
-            By default -- None, process the urls.txt instead",
-    )
+    #argparser.add_argument(
+    #    "-z",
+    #    "--collection_url",
+    #    type=str,
+    #    default=None,
+    #    help=f"Give a collection URL that will be parsed and loaded into urls.txt \
+    #        The normal operations of downloading manga images will not happen while this \
+    #        parameter is set. \
+    #        By default -- None, process the urls.txt instead",
+    #)
     argparser.add_argument(
         "-f",
         "--file_urls",
@@ -135,6 +135,12 @@ def main():
     #    help=f"Store extra info in metadata info.json file.\
     #    6+ parsers, slow +Comments",
     #)
+    argparser.add_argument(
+        "--comicinfo",
+        dest="comicinfo",
+        action="store_true",
+        help=f"Dump metadata in ComicInfo.xml file.",
+    )
     args = argparser.parse_args()
     log_handlers = []
     if args.debug:
@@ -144,7 +150,7 @@ def main():
         )
         log_formatter_file = "%(asctime)s %(levelname)s %(name)s %(filename)s %(module)s %(funcName)s %(lineno)d %(message)s"
         log_file = "debug.log"
-        log_handlers.append(logging.FileHandler(log_file, mode="w"))
+        log_handlers.append(logging.FileHandler(log_file, mode="w", encoding='utf-8'))
     else:
         log_level = logging.INFO
         log_formatter_steam = logging.Formatter("%(message)s")
@@ -178,13 +184,13 @@ def main():
     logging.getLogger("undetected_chromedriver").setLevel(logging.ERROR)
 
     file_urls = Path(args.file_urls)
-    if args.collection_url:
-        Path(args.file_urls).touch()
-    elif not file_urls.is_file() or file_urls.stat().st_size == 0:
+    #if args.collection_url:
+    #    Path(args.file_urls).touch()
+    if not file_urls.is_file() or file_urls.stat().st_size == 0:
         logging.info(
             f"File {args.file_urls} does not exist or empty.\n"
             + "Create it and write the list of manga urls first.\n"
-            + "Or run this again with the -z parameter with a collection_url to download urls first."
+            # + "Or run this again with the -z parameter with a collection_url to download urls first."
         )
         exit()
 
@@ -203,6 +209,8 @@ def main():
         wait=args.wait,
         _max=args.max,
         _zip=args.zip,
+        save_metadata=args.metadata,
+        comicinfo=args.comicinfo,
     )
 
     if args.basic_metadata:
@@ -224,10 +232,11 @@ def main():
         logging.info(f"Using cookies file: {args.cookies_file}")
         loader.init_browser(gui=args.gui)
 
-    if args.collection_url:
-        loader.load_urls_from_collection(args.collection_url)
-    else:
-        loader.load_all(save_metadata=args.metadata)
+    #if args.collection_url:
+    #    loader.load_urls_from_collection(args.collection_url)
+    #else:
+    #    loader.load_all()
+    loader.load_all()
 
 
 if __name__ == "__main__":
