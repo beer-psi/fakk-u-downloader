@@ -18,7 +18,7 @@ from downloader import (
 
 def main():
     argparser = argparse.ArgumentParser()
-    #argparser.add_argument(
+    # argparser.add_argument(
     #    "-z",
     #    "--collection_url",
     #    type=str,
@@ -27,7 +27,7 @@ def main():
     #        The normal operations of downloading manga images will not happen while this \
     #        parameter is set. \
     #        By default -- None, process the urls.txt instead",
-    #)
+    # )
     argparser.add_argument(
         "-f",
         "--file_urls",
@@ -128,13 +128,13 @@ def main():
         help=f"Store only basic info in metadata info.json file. \
          1 parser, fast, -Thumb -Price -Related -Chapters -Collections",
     )
-    #argparser.add_argument(
+    # argparser.add_argument(
     #    "--extra_metadata",
     #    dest="extra_metadata",
     #    action="store_true",
     #    help=f"Store extra info in metadata info.json file.\
     #    6+ parsers, slow +Comments",
-    #)
+    # )
     argparser.add_argument(
         "--comicinfo",
         dest="comicinfo",
@@ -150,7 +150,7 @@ def main():
         )
         log_formatter_file = "%(asctime)s %(levelname)s %(name)s %(filename)s %(module)s %(funcName)s %(lineno)d %(message)s"
         log_file = "debug.log"
-        log_handlers.append(logging.FileHandler(log_file, mode="w", encoding='utf-8'))
+        log_handlers.append(logging.FileHandler(log_file, mode="w", encoding="utf-8"))
     else:
         log_level = logging.INFO
         log_formatter_steam = logging.Formatter("%(message)s")
@@ -184,7 +184,7 @@ def main():
     logging.getLogger("undetected_chromedriver").setLevel(logging.ERROR)
 
     file_urls = Path(args.file_urls)
-    #if args.collection_url:
+    # if args.collection_url:
     #    Path(args.file_urls).touch()
     if not file_urls.is_file() or file_urls.stat().st_size == 0:
         logging.info(
@@ -197,6 +197,15 @@ def main():
     # Create empty done.text if it not exists
     if not Path(args.done_file).is_file():
         Path(args.done_file).touch()
+
+    if args.basic_metadata:
+        args.metadata = "basic"
+    # elif args.extra_metadata:
+    #    args.metadata = "extra"
+    elif args.metadata:
+        args.metadata = "standard"
+    else:
+        args.metadata = "none"
 
     loader = JewcobDownloader(
         urls_file=args.file_urls,
@@ -213,15 +222,6 @@ def main():
         comicinfo=args.comicinfo,
     )
 
-    if args.basic_metadata:
-        args.metadata = "basic"
-    #elif args.extra_metadata:
-    #    args.metadata = "extra"
-    elif args.metadata:
-        args.metadata = "standard"
-    else:
-        args.metadata = "none"
-
     if not Path(args.cookies_file).is_file():
         logging.info(
             f"Cookies file({args.cookies_file}) are not detected. Please, "
@@ -232,9 +232,9 @@ def main():
         logging.info(f"Using cookies file: {args.cookies_file}")
         loader.init_browser(gui=args.gui)
 
-    #if args.collection_url:
+    # if args.collection_url:
     #    loader.load_urls_from_collection(args.collection_url)
-    #else:
+    # else:
     #    loader.load_all()
     loader.load_all()
 
