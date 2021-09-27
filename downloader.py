@@ -476,7 +476,10 @@ class JewcobDownloader:
         ChromeOptions = uc.ChromeOptions
         options = ChromeOptions()
         options.headless = False
-        self.browser = Chrome(executable_path=self.driver_path, chrome_options=options)
+        self.browser = Chrome(
+            executable_path=self.driver_path,
+            chrome_options=options
+        )
         self.browser.set_window_size(*self.default_display)
         self.browser.get(LOGIN_URL)
         # it probably doesn't work but at least it won't throw an exception
@@ -1024,10 +1027,11 @@ class JewcobDownloader:
                 content_series.append(s["attribute"])
             metadata_api["Parody"] = content_series
 
-            content_publishers = []
-            for p in self.fakku_json["content"]["content_publishers"]:
-                content_publishers.append(p["attribute"])
-            metadata_api["Publisher"] = content_publishers
+            if "content_publishers" in self.fakku_json["content"]:
+                content_publishers = []
+                for p in self.fakku_json["content"]["content_publishers"]:
+                    content_publishers.append(p["attribute"])
+                metadata_api["Publisher"] = content_publishers
 
             metadata_api["Language"] = self.fakku_json["content"]["content_language"]
             metadata_api["Pages"] = self.fakku_json["content"]["content_pages"]
@@ -1301,7 +1305,7 @@ class JewcobDownloader:
                     resp_info_file = os.sep.join([response_folder, f"fakku_data.json"])
                     cks = self.browser.get_cookies()
                     for cookie in cks:
-                        if cookie["name"] in {"_c", "fakku_zid"}:
+                        if cookie["name"] in {"fakku_zid"}:
                             self.fakku_json[cookie["name"]] = cookie["value"]
 
                     json.dump(
