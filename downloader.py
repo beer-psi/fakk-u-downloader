@@ -1453,6 +1453,8 @@ class JewcobDownloader:
         with open(urls_file, "r") as f:
             for line in f:
                 clean_line = line.replace("\n", "")
+                if "#" in clean_line:
+                    clean_line = clean_line.split("#")[0]
                 if clean_line not in done and clean_line not in urls:
                     urls.append(clean_line)
         log.debug(f"Urls: {len(urls)}")
