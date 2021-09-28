@@ -1009,6 +1009,10 @@ class JewcobDownloader:
                     pass
                 sleep(self.wait)
 
+            log.debug("Waiting for api response")
+            while "content" not in self.fakku_json:
+                sleep(self.wait)
+
             log.debug(self.fakku_json["content"].keys())
 
             metadata_api = OrderedDict()
