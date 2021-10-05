@@ -135,12 +135,6 @@ def main():
     #    help=f"Store extra info in metadata info.json file.\
     #    6+ parsers, slow +Comments",
     # )
-    argparser.add_argument(
-        "--comicinfo",
-        dest="comicinfo",
-        action="store_true",
-        help=f"Dump metadata in ComicInfo.xml file.",
-    )
     args = argparser.parse_args()
     log_handlers = []
     if args.debug:
@@ -218,8 +212,7 @@ def main():
         wait=args.wait,
         _max=args.max,
         _zip=args.zip,
-        save_metadata=args.metadata,
-        comicinfo=args.comicinfo,
+        save_metadata=args.metadata
     )
 
     if not Path(args.cookies_file).is_file():
