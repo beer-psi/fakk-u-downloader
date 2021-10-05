@@ -127,15 +127,19 @@ def append_images(
         new_width = max(widths)
         new_height = sum(heights)
 
-    if src_type == "scrambled":
-        new_im = Image.new("RGBA", (new_width, new_height), color=bg_color)
-    else:
-        new_im = Image.new("RGB", (new_width, new_height), color=bg_color)
-
     if type(imgs[0]) is str:
         images = map(Image.open, imgs)
     else:
         images = imgs
+    
+    if src_type == "scrambled":
+        new_im = Image.new("RGBA", (new_width, new_height), color=bg_color)
+    else:
+        if images[0].mode == "L" and images[1].mode == "L":
+            new_im = Image.new("L", (new_width, new_height), color=255)
+        else:
+            new_im = Image.new("RGB", (new_width, new_height), color=bg_color)
+
     offset = 0
     for im in images:
         if direction == "horizontal":
