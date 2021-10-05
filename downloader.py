@@ -7,7 +7,6 @@ import secrets
 import shutil
 import string
 import sys
-import xml.etree.cElementTree as ET
 from binascii import a2b_base64
 from collections import OrderedDict
 from gzip import decompress
@@ -221,85 +220,6 @@ def _make_cbzfile(
 
 shutil.register_archive_format("cbz", _make_cbzfile, [], "CBZ file")
 
-
-def comicinfo_writer(info_meta, api_meta, file_path):
-    log.debug("Creating xml tree")
-    r = ET.Element("ComicInfo")
-
-    ET.SubElement(r, "Title").text = api_meta["content"]["content_name"]
-    ET.SubElement(r, "Web").text = api_meta["content"]["content_url"]
-    ET.SubElement(r, "PageCount").text = str(api_meta["content"]["content_pages"])
-    ET.SubElement(r, "Summary").text = api_meta["content"]["content_description"]
-    if "Circle" in info_meta:
-        if type(info_meta["Circle"]) is list:
-            info_meta["Circle"] = ", ".join(info_meta["Circle"])
-        if type(info_meta["Artist"]) is list:
-            info_meta["Artist"] = ", ".join(info_meta["Artist"])
-        ET.SubElement(r, "Writer").text = ", ".join(
-            (info_meta["Artist"], info_meta["Circle"])
-        )
-    else:
-        if type(info_meta["Artist"]) is list:
-            info_meta["Artist"] = ", ".join(info_meta["Artist"])
-        ET.SubElement(r, "Writer").text = info_meta["Artist"]
-    # there is no good way of getting gallery date (ok there is but it's rss)
-    # use timestamp from thumb if it fails use current time
-    try:
-        timestamp = int(api_meta["pages"]["1"]["thumb"].split("/")[-3].split("_")[-1])
-    except:
-        timestamp = None
-    try:
-        timestamp = int(api_meta["pages"]["1"]["thumb"].split("/")[-3].split("-")[-1])
-    except:
-        timestamp = None
-    if not timestamp:
-        timestamp = int(time())
-    dt = datetime.datetime.fromtimestamp(timestamp, datetime.timezone.utc)
-    ET.SubElement(r, "Year").text = dt.strftime("%Y")
-    ET.SubElement(r, "Month").text = dt.strftime("%m")
-    ET.SubElement(r, "Day").text = dt.strftime("%d")
-
-    tgs = []
-    for t in api_meta["content"]["content_tags"]:
-        tgs.append(t["attribute"])
-    # it should be Tags but Komga lacks support for Tags element
-    ET.SubElement(r, "Genre").text = ", ".join(tgs)
-    # needed when using Genre
-    ET.SubElement(r, "Series").text = api_meta["content"]["content_name"]
-    # ET.SubElement(r, "Series").text = 'FAKKU! Unlimited'
-    # ET.SubElement(r,"Genre").text = 'Hentai'
-
-    if type(info_meta["Publisher"]) is list:
-        info_meta["Publisher"] = ", ".join(info_meta["Publisher"])
-    ET.SubElement(r, "Publisher").text = info_meta["Publisher"]
-    ET.SubElement(r, "Manga").text = "YesAndRightToLeft"
-    ET.SubElement(r, "LanguageISO").text = "en"
-    ET.SubElement(r, "AgeRating").text = "X18+"
-    sa = []
-    if "Event" in info_meta:
-        if type(info_meta["Event"]) is list:
-            info_meta["Event"] = ", ".join(info_meta["Event"])
-        sa.append(info_meta["Event"])
-    if "Parody" in info_meta:
-        if type(info_meta["Parody"]) is list:
-            info_meta["Parody"] = ", ".join(info_meta["Parody"])
-        sa.append(info_meta["Parody"])
-    if "Magazine" in info_meta:
-        if type(info_meta["Magazine"]) is list:
-            info_meta["Magazine"] = ", ".join(info_meta["Magazine"])
-        sa.append(info_meta["Magazine"])
-    if "Collections" in info_meta:
-        for col in info_meta["Collections"].keys():
-            sa.append(col)
-    if len(sa) > 0:
-        # it should be SeriesGroup but Komga treats that field as single string instead of ',' separated list
-        ET.SubElement(r, "StoryArc").text = ", ".join(sa)
-    log.debug("Writing xml to file")
-    a = ET.ElementTree(r)
-    ET.indent(a, space="\t", level=0)
-    a.write(file_path, encoding="utf-8", xml_declaration=True)
-
-
 class JewcobDownloader:
     """
     Class which allows download manga.
@@ -326,8 +246,7 @@ class JewcobDownloader:
         password=None,
         _max=MAX,
         _zip=ZIP,
-        save_metadata=True,
-        comicinfo=False,
+        save_metadata=True
     ):
         """
         param: urls_file -- string name of .txt file with urls
@@ -365,7 +284,6 @@ class JewcobDownloader:
         self.max = _max
         self.zip = _zip
         self.save_metadata = save_metadata
-        self.comicinfo = comicinfo
         self.fakku_json = {}
         self.type = None
         self.done = 0
@@ -776,23 +694,16 @@ class JewcobDownloader:
                         elif "/collections" in meta_id:
                             log.debug("Parsing Collections")
                             col = meta_rest.find_element(By.CSS_SELECTOR, "em")
-                            cola = col.find_element(By.CSS_SELECTOR, "a")
-                            colu = cola.get_attribute("href")
-                            colt = cola.get_property("textContent")
-                            a_tags = meta_rest.find_element(
-                                By.CSS_SELECTOR,
-                                'div[class^="col-span-full w-full relative space-y-2"]',
-                            )
-                            a_tags = a_tags.find_elements(By.CSS_SELECTOR, "a")
-                            col_dict = dict()
-                            values = []
-                            for a in a_tags:
-                                ah = a.get_attribute("href")
-                                values.append(ah)
-                            if len(values) == 1:
-                                values = values[0]
-                            col_dict[colt] = (colu, values)
-                            metadata["Collections"] = col_dict
+                            cols = meta_rest.find_elements(By.CSS_SELECTOR, "em")
+                            if len(cols) > 0:
+                                cols_meta = []
+                                for col in cols:
+                                    cola = col.find_element(By.CSS_SELECTOR, "a")
+                                    colu = cola.get_attribute("href")
+                                    colt = cola.get_property("textContent")
+                                    cols_meta.append((colt, colu))
+                                if len(cols_meta) > 0:
+                                    metadata["Collections"] = cols_meta
                         elif "/chapters" in meta_id:
                             log.debug("Parsing Chapters")
                             div_chapters = meta_rest.find_elements(
@@ -1320,13 +1231,6 @@ class JewcobDownloader:
                     )
 
             if self.save_metadata != "none":
-                log.debug("Dumping metadata in info.json file")
-                json_info_file = os.sep.join(
-                    [
-                        manga_folder,
-                        "info.json",
-                    ]
-                )
 
                 metd = OrderedDict()
                 sorted_d = sorted(metadata.items(), key=lambda x: x[0])
@@ -1337,18 +1241,18 @@ class JewcobDownloader:
                             sdd = sd[1][0]
                     metd[sd[0]] = sdd
 
+                log.debug("Dumping metadata in info.json file")
+                json_info_file = os.sep.join(
+                    [
+                        manga_folder,
+                        "info.json",
+                    ]
+                )
+
                 with open(json_info_file, "w", encoding="utf-8") as f:
                     json.dump(metd, f, indent=True, ensure_ascii=False)
 
-                if self.comicinfo and self.save_metadata != "basic":
-                    log.debug("Dumping metadata in ComicInfo.xml file")
-                    comic_info_file = os.sep.join(
-                        [
-                            manga_folder,
-                            "ComicInfo.xml",
-                        ]
-                    )
-                    comicinfo_writer(metd, self.fakku_json, comic_info_file)
+
 
             if self.zip:
                 log.debug("Creating a cbz and deleting the image folder after creation")
