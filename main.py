@@ -7,7 +7,6 @@ from downloader import (
     COOKIES_FILE,
     DONE_FILE,
     JewcobDownloader,
-    MAX,
     ROOT_MANGA_DIR,
     TIMEOUT,
     URLS_FILE,
@@ -88,14 +87,6 @@ def main():
             Increase this argument if you become blocked. By default -- {WAIT} sec",
     )
     argparser.add_argument(
-        "-m",
-        "--max",
-        type=int,
-        default=MAX,
-        help=f"Max number of volumes to download at once \
-            Set this argument if you become blocked. By default -- No limit",
-    )
-    argparser.add_argument(
         "--nozip",
         dest="zip",
         action="store_false",
@@ -126,7 +117,7 @@ def main():
         dest="basic_metadata",
         action="store_true",
         help=f"Store only basic info in metadata info.json file. \
-         1 parser, fast, -Thumb -Price -Related -Chapters -Collections",
+         no parser, fast, -Magazine -Event -Circle -Price -Related -Chapters -Collections",
     )
     # argparser.add_argument(
     #    "--extra_metadata",
@@ -135,6 +126,13 @@ def main():
     #    help=f"Store extra info in metadata info.json file.\
     #    6+ parsers, slow +Comments",
     # )
+    argparser.add_argument(
+        "--proxy",
+        type=str,
+        default=None,
+        help="Use proxy server for connection. \
+         exaple: --proxy socks5://user:pass@192.168.10.100:8888",
+    )
     args = argparser.parse_args()
     log_handlers = []
     if args.debug:
@@ -210,9 +208,9 @@ def main():
         password=args.password,
         timeout=args.timeout,
         wait=args.wait,
-        _max=args.max,
         _zip=args.zip,
-        save_metadata=args.metadata
+        save_metadata=args.metadata,
+        proxy=args.proxy,
     )
 
     if not Path(args.cookies_file).is_file():
