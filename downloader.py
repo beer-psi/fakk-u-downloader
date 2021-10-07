@@ -1,4 +1,3 @@
-import datetime
 import json
 import logging
 import os
@@ -9,7 +8,6 @@ import string
 import sys
 from binascii import a2b_base64
 from collections import OrderedDict
-from gzip import decompress
 from pickle import UnpicklingError
 from time import sleep, time
 
@@ -24,6 +22,7 @@ from selenium.common.exceptions import (
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+from seleniumwire.utils import decode
 from seleniumwire.webdriver import Chrome
 from tqdm import tqdm
 
@@ -54,8 +53,6 @@ ROOT_RESPONSE_DIR = "response"
 TIMEOUT = 10
 # Wait between page loading in seconds
 WAIT = 0.1
-# Max manga to download in one session (-1 == no limit)
-MAX = None
 # User agent for web browser
 USER_AGENT = None
 # Should a cbz archive file be created
@@ -131,7 +128,7 @@ def append_images(
         images = map(Image.open, imgs)
     else:
         images = imgs
-    
+
     if src_type == "scrambled":
         new_im = Image.new("RGBA", (new_width, new_height), color=bg_color)
     else:
@@ -224,6 +221,7 @@ def _make_cbzfile(
 
 shutil.register_archive_format("cbz", _make_cbzfile, [], "CBZ file")
 
+
 class JewcobDownloader:
     """
     Class which allows download manga.
@@ -248,9 +246,9 @@ class JewcobDownloader:
         wait=WAIT,
         login=None,
         password=None,
-        _max=MAX,
         _zip=ZIP,
-        save_metadata=True
+        save_metadata=True,
+        proxy=None,
     ):
         """
         param: urls_file -- string name of .txt file with urls
@@ -285,11 +283,11 @@ class JewcobDownloader:
         self.wait = wait
         self.login = login
         self.password = password
-        self.max = _max
         self.zip = _zip
         self.save_metadata = save_metadata
         self.fakku_json = {}
         self.type = None
+        self.proxy = proxy
         self.done = 0
 
     def init_browser(self, auth=False, gui=False):
@@ -324,20 +322,24 @@ class JewcobDownloader:
         # set options to avoid cors and other bullshit
         options.add_argument("disable-web-security")
 
+        seleniumwire_options = {}
+        seleniumwire_options["disable_encoding"] = True
+        seleniumwire_options["request_storage"] = "memory"
         if log.level == 10:
-            sce = False
+            seleniumwire_options["suppress_connection_errors"] = False
         else:
-            sce = True
-        seleniumwire_options = {
-            "suppress_connection_errors": sce,
-        }
+            seleniumwire_options["suppress_connection_errors"] = True
+        if self.proxy:
+            seleniumwire_options["proxy"] = {
+                "http": self.proxy,
+                "https": self.proxy,
+            }
 
         self.browser = Chromed(
             executable_path=self.driver_path,
             chrome_options=options,
             seleniumwire_options=seleniumwire_options,
         )
-        self.browser.header_overrides = {"Accept-Encoding": "identity"}
 
         self.browser.set_script_timeout(self.timeout)
         self.browser.set_page_load_timeout(self.timeout)
@@ -398,9 +400,23 @@ class JewcobDownloader:
         ChromeOptions = uc.ChromeOptions
         options = ChromeOptions()
         options.headless = False
+
+        seleniumwire_options = {}
+        seleniumwire_options["request_storage"] = "memory"
+        if log.level == 10:
+            seleniumwire_options["suppress_connection_errors"] = False
+        else:
+            seleniumwire_options["suppress_connection_errors"] = True
+        if self.proxy:
+            seleniumwire_options["proxy"] = {
+                "http": self.proxy,
+                "https": self.proxy,
+            }
+
         self.browser = Chrome(
             executable_path=self.driver_path,
-            chrome_options=options
+            chrome_options=options,
+            seleniumwire_options=seleniumwire_options,
         )
         self.browser.set_window_size(*self.default_display)
         self.browser.get(LOGIN_URL)
@@ -449,8 +465,11 @@ class JewcobDownloader:
 
             if "Content-Encoding" in response.headers:
                 try:
-                    gzip_response = decompress(response.body)
-                    response.body = gzip_response
+                    body = decode(
+                        response.body,
+                        response.headers.get("Content-Encoding", "identity"),
+                    )
+                    response.body = body
                 except Exception as err:
                     log.debug(err)
                 del response.headers["Content-Encoding"]
@@ -468,8 +487,11 @@ class JewcobDownloader:
                 resp_body = response.body
                 if "Content-Encoding" in response.headers:
                     try:
-                        gzip_response = decompress(response.body)
-                        resp_body = gzip_response
+                        body = decode(
+                            response.body,
+                            response.headers.get("Content-Encoding", "identity"),
+                        )
+                        resp_body = body
                     except Exception as err:
                         log.debug(err)
                 body = resp_body.decode("utf-8")
@@ -1256,8 +1278,6 @@ class JewcobDownloader:
                 with open(json_info_file, "w", encoding="utf-8") as f:
                     json.dump(metd, f, indent=True, ensure_ascii=False)
 
-
-
             if self.zip:
                 log.debug("Creating a cbz and deleting the image folder after creation")
                 archive_name = shutil.make_archive(folder_title, "cbz", manga_folder)
@@ -1271,8 +1291,6 @@ class JewcobDownloader:
             with open(self.done_file, "a") as done_file_obj:
                 done_file_obj.write(f"{url}\n")
             urls_processed += 1
-            if self.max is not None and urls_processed >= self.max:
-                break
             log.debug("Finished parsing page")
             sleep(self.wait)
         self.program_exit()
