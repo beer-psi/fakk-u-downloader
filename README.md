@@ -164,6 +164,6 @@ https://archiveofsins.com/h/thread/6271290/#6289883
 > 2. Open the browser console (F12)
 > 3. Paste this into the console and press enter:
 > ```jquery
-> $("form.js-start-disabled-button").first().append($('<input type="hidden" name="content_controversial" value="1" />')).find("button> > [type=submit]").attr("disabled", false).click();
+> $("form.js-start-disabled-button").first().append($('<input type="hidden" name="content_controversial" value="1" />')).find(':submit').attr("disabled", false).click();
 > ```
 > 4. It won't return anything but if you check controversial gallery it should work now.
