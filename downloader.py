@@ -11,7 +11,6 @@ from collections import OrderedDict
 from pickle import UnpicklingError
 from time import sleep, time
 
-import undetected_chromedriver as uc
 from PIL import Image
 from selenium.common.exceptions import (
     JavascriptException,
@@ -22,9 +21,10 @@ from selenium.common.exceptions import (
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+from seleniumwire.undetected_chromedriver import Chrome, ChromeOptions
 from seleniumwire.utils import decode
-from seleniumwire.webdriver import Chrome
 from tqdm import tqdm
+
 
 log = logging.getLogger()
 
@@ -35,9 +35,11 @@ MAX_DISPLAY_SETTINGS = [800, 600]
 # Path to headless driver
 if sys.platform == "win32":
     EXEC_PATH = "chromedriver.exe"
+    BIN_PATH = "chrome.exe"
     sp_c = "\\"
 else:
-    EXEC_PATH = "chromedriver"
+    EXEC_PATH = "./chromedriver"
+    BIN_PATH = "./chrome"
     sp_c = "/"
 # File with manga urls
 URLS_FILE = "urls.txt"
@@ -241,6 +243,7 @@ class JewcobDownloader:
         root_manga_dir=ROOT_MANGA_DIR,
         root_response_dir=ROOT_RESPONSE_DIR,
         driver_path=EXEC_PATH,
+        chrome_path=BIN_PATH,
         default_display=MAX_DISPLAY_SETTINGS,
         timeout=TIMEOUT,
         wait=WAIT,
@@ -259,6 +262,8 @@ class JewcobDownloader:
             Contains binary data with cookies
         param: driver_path -- string
             Path to the browser driver
+        param: chrome_path -- string
+            Path to the browser
         param: default_display -- list of two int (width, height)
             Initial display settings. After loading the page, they will be changed
         param: timeout -- float
@@ -277,6 +282,7 @@ class JewcobDownloader:
         self.root_manga_dir = root_manga_dir
         self.root_response_dir = root_response_dir
         self.driver_path = driver_path
+        self.chrome_path = chrome_path
         self.browser = None
         self.default_display = default_display
         self.timeout = timeout
@@ -306,13 +312,6 @@ class JewcobDownloader:
         if auth:
             self.__auth()
 
-        uc._Chrome = Chrome
-        # don't check for chromedriver update at every run
-        if os.path.exists(self.driver_path):
-            uc.TARGET_VERSION = 1
-        Chromed = uc.Chrome
-        ChromeOptions = uc.ChromeOptions
-
         options = ChromeOptions()
         if not gui:
             options.headless = True
@@ -321,6 +320,9 @@ class JewcobDownloader:
             options.headless = False
         # set options to avoid cors and other bullshit
         options.add_argument("disable-web-security")
+
+        if os.path.exists(self.chrome_path):
+            options.binary_location = self.chrome_path
 
         seleniumwire_options = {}
         seleniumwire_options["disable_encoding"] = True
@@ -335,7 +337,7 @@ class JewcobDownloader:
                 "https": self.proxy,
             }
 
-        self.browser = Chromed(
+        self.browser = Chrome(
             executable_path=self.driver_path,
             chrome_options=options,
             seleniumwire_options=seleniumwire_options,
@@ -395,11 +397,12 @@ class JewcobDownloader:
         Authentication in browser with GUI for saving cookies in first time
         """
         log.debug("Authentication")
-        uc._Chrome = Chrome
-        Chromed = uc.Chrome
-        ChromeOptions = uc.ChromeOptions
+
         options = ChromeOptions()
         options.headless = False
+
+        if os.path.exists(self.chrome_path):
+            options.binary_location = self.chrome_path
 
         seleniumwire_options = {}
         seleniumwire_options["request_storage"] = "memory"
@@ -407,6 +410,7 @@ class JewcobDownloader:
             seleniumwire_options["suppress_connection_errors"] = False
         else:
             seleniumwire_options["suppress_connection_errors"] = True
+
         if self.proxy:
             seleniumwire_options["proxy"] = {
                 "http": self.proxy,
