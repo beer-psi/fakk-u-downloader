@@ -1,5 +1,5 @@
-Pillow>=8.1.2
-selenium>=4.0.0b4
-tqdm>=4.57.0
-selenium-wire>=4.5.3
-undetected-chromedriver>=3.0.3
+Pillow==8.3.2
+selenium==4.0.0
+tqdm>==4.57.0
+selenium-wire==4.5.4
+undetected-chromedriver==3.0.5
