@@ -567,10 +567,6 @@ class JewcobDownloader:
 
         urls_processed = 0
         for url in self.urls:
-            if "fakku.net/anime/" in url or "fakku.net/games/" in url:
-                logging.info(f"{url.split('fakku.net/')[-1].split('/')[0]}: {url}")
-                urls_processed += 1
-                continue
 
             logging.info(url)
             self.timeout = TIMEOUT
@@ -1383,6 +1379,8 @@ class JewcobDownloader:
         with open(urls_file, "r") as f:
             for line in f:
                 clean_line = line.replace("\n", "")
+                if 'fakku.net/hentai/' not in clean_line:
+                    continue
                 if "#" in clean_line:
                     clean_line = clean_line.split("#")[0]
                 if clean_line not in done and clean_line not in urls:
