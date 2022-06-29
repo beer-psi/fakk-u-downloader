@@ -8,7 +8,6 @@ import string
 import sys
 from binascii import a2b_base64
 from collections import OrderedDict
-from pickle import UnpicklingError
 from time import sleep, time
 
 from PIL import Image
@@ -21,16 +20,15 @@ from selenium.common.exceptions import (
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-from seleniumwire.undetected_chromedriver import Chrome, ChromeOptions
+import seleniumwire.undetected_chromedriver as uc
 from seleniumwire.utils import decode
 from tqdm import tqdm
-
 
 log = logging.getLogger()
 
 BASE_URL = "https://www.fakku.net"
 LOGIN_URL = f"{BASE_URL}/login/"
-# Initial display settings for browser. Used for grahic mode
+# Initial display settings for browser. Used for graphic mode
 MAX_DISPLAY_SETTINGS = [800, 600]
 # Path to headless driver
 if sys.platform == "win32":
@@ -52,15 +50,15 @@ ROOT_MANGA_DIR = "manga"
 # Root directory for original files from server response
 ROOT_RESPONSE_DIR = "response"
 # Timeout to page loading in seconds
-TIMEOUT = 10
+TIMEOUT = 60
 # Wait between page loading in seconds
-WAIT = 0.1
+WAIT = 1
 # User agent for web browser
 USER_AGENT = None
 # Should a cbz archive file be created
 ZIP = False
 # script version
-version = "v0.0.9"
+version = "v0.1"
 
 # create script tag to put in html body/head
 js_name_todata = secrets.choice(string.ascii_letters) + "".join(
@@ -90,7 +88,7 @@ def append_images(
     imgs,
     direction="horizontal",
     bg_color=(255, 255, 255),
-    aligment="center",
+    alignment="center",
     src_type=None,
     dirc=None,
 ):
@@ -101,8 +99,10 @@ def append_images(
         imgs: List of PIL images
         direction: direction of concatenation, 'horizontal' or 'vertical'
         bg_color: Background color (default: white)
-        aligment: alignment mode if images need padding;
+        alignment: alignment mode if images need padding;
            'left', 'right', 'top', 'bottom', or 'center'
+        src_type: image type, scrambled or not (default: None)
+        dirc: reading direction, "Left to Right" or none (default: None)
 
     Returns:
         Concatenated image as a new PIL image object.
@@ -127,7 +127,7 @@ def append_images(
         new_height = sum(heights)
 
     if type(imgs[0]) is str:
-        images = map(Image.open, imgs)
+        images = list(map(Image.open, imgs))
     else:
         images = imgs
 
@@ -143,17 +143,17 @@ def append_images(
     for im in images:
         if direction == "horizontal":
             y = 0
-            if aligment == "center":
+            if alignment == "center":
                 y = int((new_height - im.size[1]) / 2)
-            elif aligment == "bottom":
+            elif alignment == "bottom":
                 y = new_height - im.size[1]
             new_im.paste(im, (offset, y))
             offset += im.size[0]
         else:
             x = 0
-            if aligment == "center":
+            if alignment == "center":
                 x = int((new_width - im.size[0]) / 2)
-            elif aligment == "right":
+            elif alignment == "right":
                 x = new_width - im.size[0]
             new_im.paste(im, (x, offset))
             offset += im.size[1]
@@ -258,7 +258,7 @@ class JewcobDownloader:
             Contains list of manga urls, that's to be downloaded
         param: done_file -- string name of .txt file with urls
             Contains list of manga urls that have successfully been downloaded
-        param: cookies_file -- string name of .picle file with cookies
+        param: cookies_file -- string name of .pickle file with cookies
             Contains binary data with cookies
         param: driver_path -- string
             Path to the browser driver
@@ -269,7 +269,7 @@ class JewcobDownloader:
         param: timeout -- float
             Timeout upon waiting for first page to load
         param: wait -- float
-            Wait in seconds beetween pages downloading.
+            Wait in seconds between pages downloading.
         param: login -- string
             Login or email for authentication
         param: password -- string
@@ -312,14 +312,14 @@ class JewcobDownloader:
         if auth:
             self.__auth()
 
-        options = ChromeOptions()
+        options = uc.ChromeOptions()
         if not gui:
             options.headless = True
             options.add_argument("--headless")
         else:
             options.headless = False
         # set options to avoid cors and other bullshit
-        options.add_argument("disable-web-security")
+        options.add_argument("--disable-web-security")
 
         if os.path.exists(self.chrome_path):
             options.binary_location = self.chrome_path
@@ -337,9 +337,9 @@ class JewcobDownloader:
                 "https": self.proxy,
             }
 
-        self.browser = Chrome(
+        self.browser = uc.Chrome(
             executable_path=self.driver_path,
-            chrome_options=options,
+            options=options,
             seleniumwire_options=seleniumwire_options,
         )
 
@@ -348,11 +348,8 @@ class JewcobDownloader:
 
         if gui:
             self.browser.set_window_size(*self.default_display)
-        self.browser.response_interceptor = self.interceptor
-        self.browser.scopes = [
-            ".*books.fakku.net/.*",
-            ".*fakku.net/hentai/.*/read/page/.*",
-        ]
+        self.browser.request_interceptor = self.req_interceptor
+        self.browser.response_interceptor = self.res_interceptor
 
         self.__set_cookies()
         log.info("Browser initialized")
@@ -365,12 +362,12 @@ class JewcobDownloader:
         self.waiting_loading_page(LOGIN_URL, is_reader_page=False)
         # set fakku local storage options
         # UI Control Direction for Right to Left Content: Right to Left
-        # Read in Either Direction on First Page: Unticked
+        # Read in Either Direction on First Page: unchecked
         # Page Display Mode: Singles Pages Only
         # Page Scaling: Original Size
-        # Fit to Width if Overwidth: Unticked
+        # Fit to Width if Overwidth: unchecked
         # Background Color: Gray
-        # But Not When Viewing Two Pages: Unticked
+        # But Not When Viewing Two Pages: unchecked
         self.browser.execute_script(
             "window.localStorage.setItem('fakku-uiControlDirection','rtl');"
             "window.localStorage.setItem('fakku-uiFirstPageControlDirectionFlip','false');"
@@ -398,7 +395,7 @@ class JewcobDownloader:
         """
         log.debug("Authentication")
 
-        options = ChromeOptions()
+        options = uc.ChromeOptions()
         options.headless = False
 
         if os.path.exists(self.chrome_path):
@@ -417,9 +414,9 @@ class JewcobDownloader:
                 "https": self.proxy,
             }
 
-        self.browser = Chrome(
+        self.browser = uc.Chrome(
             executable_path=self.driver_path,
-            chrome_options=options,
+            options=options,
             seleniumwire_options=seleniumwire_options,
         )
         self.browser.set_window_size(*self.default_display)
@@ -433,9 +430,9 @@ class JewcobDownloader:
         except NoSuchElementException:
             pass
 
-        if not self.login is None:
+        if self.login is not None:
             self.browser.find_element(By.ID, "username").send_keys(self.login)
-        if not self.password is None:
+        if self.password is not None:
             self.browser.find_element(By.ID, "password").send_keys(self.password)
         self.browser.find_element(By.CSS_SELECTOR, 'button[class*="js-submit"]').click()
 
@@ -450,10 +447,21 @@ class JewcobDownloader:
         self.browser.quit()
         exit()
 
-    def interceptor(self, request, response):  # A response interceptor takes two args
+    def req_interceptor(self, request):  # A response interceptor takes two args
+        if "fakku.net" not in request.url:
+            request.abort()
+            return
+        if request.url.endswith((".png", ".jpg", ".gif")):
+            request.abort()
+            return
+
+    def res_interceptor(
+        self, request, response
+    ):  # A response interceptor takes two args
         """
         Modifies response body by adding script tag, javascript injection
         """
+
         if "fakku.net/hentai/" in request.url and "/read/page/" in request.url:
             # various checks to make sure we're only injecting the script on appropriate responses
             # we check that the content type is HTML and that the status code is 200
@@ -503,7 +511,7 @@ class JewcobDownloader:
 
     def get_response_images(self, page, save_path, zpad):
         """
-        Saves original images sended by fakku server, scrambled and unscrambled
+        Saves original images sent by fakku server, scrambled and unscrambled
         """
         if "response_path" not in self.fakku_json["pages"][page]:
             num = self.fakku_json["pages"][page]["page"]
@@ -511,34 +519,25 @@ class JewcobDownloader:
             image_path = None
             log.debug("Get response images")
             while not image_path:
-                all_requests = None
-                while not all_requests:
-                    try:
-                        all_requests = self.browser.requests
-                    except UnpicklingError:
-                        sleep(self.wait)
-                    except EOFError:
-                        sleep(self.wait)
-                    except FileNotFoundError:
-                        sleep(self.wait)
-                for request in all_requests:
-                    if request.response:
-                        if request.url == resp_url:
-                            resp_file_name = request.url.split("/")[-1]
-                            resp_file_type = request.response.headers[
-                                "Content-Type"
-                            ].split("/")[-1]
-                            resp_file_type = resp_file_type.replace("jpeg", "jpg")
-                            resp_data = request.response.body
-                            resp_destination_file = os.sep.join(
-                                [
-                                    save_path,
-                                    f"{num:0{zpad}d}.{resp_file_type}",
-                                ]
-                            )
-                            with open(resp_destination_file, "wb") as file:
-                                file.write(resp_data)
-                            image_path = resp_destination_file
+                request = self.browser.wait_for_request(resp_url, self.timeout)
+                if request.response:
+                    if request.url == resp_url:
+                        if not request.response.headers["Content-Type"]:
+                            continue
+                        resp_file_type = request.response.headers["Content-Type"].split(
+                            "/"
+                        )[-1]
+                        resp_file_type = resp_file_type.replace("jpeg", "jpg")
+                        resp_data = request.response.body
+                        resp_destination_file = os.sep.join(
+                            [
+                                save_path,
+                                f"{num:0{zpad}d}.{resp_file_type}",
+                            ]
+                        )
+                        with open(resp_destination_file, "wb") as file:
+                            file.write(resp_data)
+                        image_path = resp_destination_file
                 sleep(self.wait)
             self.fakku_json["pages"][page]["response_path"] = image_path
 
@@ -583,7 +582,6 @@ class JewcobDownloader:
                     By.CSS_SELECTOR,
                     "span.inline-block.text-base.text-white.font-normal.select-none.hover\:text-red-300",
                 )
-                # todo check if my account in cn
                 cn = login_check.get_property("textContent")
             except:
                 logging.info("You aren't logged in")
@@ -753,161 +751,6 @@ class JewcobDownloader:
                             metadata["Chapters"] = cd
                         else:
                             pass
-                            """
-                            if self.save_metadata == "extra":
-                                comments = []
-                                chain = []
-                                div_comments = meta_rest.find_elements(
-                                    By.CSS_SELECTOR, 'div[class^="bg-white table p-4 w-full rounded space-y-2 dark:bg-gray-900"]'
-                                )
-                                for comment in div_comments:
-                                    comment_dict = OrderedDict()
-                                    comment_class = comment.get_attribute("class")
-                                    #if comment_class == "comment-reply-textarea":
-                                    #    continue
-                                    #log.debug(comment_class)
-
-                                    try:
-                                        comment_id = comment.find_element(
-                                            By.CSS_SELECTOR, "a"
-                                        )
-                                    except NoSuchElementException:
-                                        continue
-                                    comment_id = int(comment_id.get_attribute("id"))
-                                    log.debug(comment_id)
-                                    comment_dict["id"] = comment_id
-
-                                    comment_rank = int(
-                                        comment.find_element(
-                                            By.CSS_SELECTOR, "div.rank"
-                                        ).text
-                                    )
-                                    log.debug(comment_rank)
-                                    comment_dict["rank"] = comment_rank
-
-                                    comment_post_top = comment.find_element(
-                                        By.CSS_SELECTOR, "div.post-row-top"
-                                    )
-                                    comment_post_username = (
-                                        comment_post_top.find_element(
-                                            By.CSS_SELECTOR, "a"
-                                        ).text
-                                    )
-                                    log.debug(comment_post_username)
-                                    comment_dict["username"] = comment_post_username
-                                    try:
-                                        comment_post_alias = (
-                                            comment_post_top.find_element(
-                                                By.CSS_SELECTOR, "strong"
-                                            ).text
-                                        )
-                                        log.debug(comment_post_alias)
-                                        comment_dict["alias"] = comment_post_alias
-                                    except NoSuchElementException:
-                                        pass
-                                    comment_posted = comment_post_top.find_element(
-                                        By.CSS_SELECTOR, "span"
-                                    )
-                                    comment_posted = comment_posted.get_attribute(
-                                        "title"
-                                    )
-                                    log.debug(comment_posted)
-                                    comment_dict["posted"] = comment_posted
-
-                                    comment_post_body = comment.find_element(
-                                        By.CSS_SELECTOR, "div.post-row-body"
-                                    )
-                                    try:
-                                        comment_review_title = (
-                                            comment_post_body.find_element(
-                                                By.CSS_SELECTOR, "strong"
-                                            ).text
-                                        )
-                                        log.debug(comment_review_title)
-                                        comment_dict[
-                                            "review_title"
-                                        ] = comment_review_title
-                                    except NoSuchElementException:
-                                        pass
-                                    try:
-                                        comment_star_rating = (
-                                            comment_post_body.find_element(
-                                                By.CSS_SELECTOR, "div.star-rating"
-                                            )
-                                        )
-                                        fs = 0
-                                        for (
-                                            fas
-                                        ) in comment_star_rating.find_elements(
-                                            By.CSS_SELECTOR, "i.fas.fa-star"
-                                        ):
-                                            fs += 1
-                                        es = 0
-                                        for (
-                                            far
-                                        ) in comment_star_rating.find_elements(
-                                            By.CSS_SELECTOR, "i.far.fa-star"
-                                        ):
-                                            es += 1
-                                        comment_star_rating = f"{fs}/{fs + es}"
-                                        log.debug(comment_star_rating)
-                                        comment_dict[
-                                            "star_rating"
-                                        ] = comment_star_rating
-                                    except NoSuchElementException:
-                                        pass
-                                    try:
-                                        comment_post_text = comment.find_element(
-                                            By.CSS_SELECTOR,
-                                            f"div[id=comment-{str(comment_id)}]",
-                                        ).text
-                                        log.debug(comment_post_text)
-                                        comment_dict["text"] = comment_post_text
-                                    except NoSuchElementException:
-                                        pass
-
-                                    try:
-                                        comment_edit_time = comment.find_element(
-                                            By.CSS_SELECTOR, "p"
-                                        ).text
-                                        log.debug(comment_edit_time)
-                                        comment_dict["edited"] = comment_edit_time
-                                    except NoSuchElementException:
-                                        pass
-
-                                    if (
-                                        comment_class
-                                        == "comment- comment-row comment-visible"
-                                    ):
-                                        if not chain:
-                                            chain = [0, 0, 0]
-                                        else:
-                                            chain[0] += 1
-                                            chain[1] = 0
-                                            chain[2] = 0
-                                    elif (
-                                        comment_class
-                                        == "comment-reply comment-row comment-visible"
-                                    ):
-                                        if not chain:
-                                            chain = [0, 0, 0]
-                                        else:
-                                            chain[1] += 1
-                                            chain[2] = 0
-                                    elif (
-                                        comment_class
-                                        == "comment-tree comment-row comment-visible"
-                                    ):
-                                        if not chain:
-                                            chain = [0, 0, 0]
-                                        else:
-                                            chain[2] += 1
-                                    chain2 = tuple(chain)
-                                    log.debug(chain2)
-                                    comment_dict["chain"] = chain2
-                                    comments.append(comment_dict)
-                                metadata["Comments"] = comments
-                            """
                 except Exception as meta_err:
                     log.info(f"Metadata parser issue bottom, please report url: {url}")
                     log.info(str(meta_err))
@@ -989,7 +832,8 @@ class JewcobDownloader:
                 content_tags.append(t["attribute"])
             metadata_api["Tags"] = content_tags
 
-            metadata_api["Thumb"] = self.fakku_json["pages"]["1"]["thumb"]
+            tp = list(self.fakku_json["pages"].keys())[0]
+            metadata_api["Thumb"] = self.fakku_json["pages"][tp]["thumb"]
 
             log.debug(metadata_api)
 
@@ -1081,7 +925,6 @@ class JewcobDownloader:
             if not os.path.exists(manga_folder):
                 os.mkdir(manga_folder)
             log.debug(manga_folder)
-            manga_abs_path = os.path.abspath(manga_folder)
             response_folder = os.sep.join([self.root_response_dir, folder_title])
             if not os.path.exists(response_folder):
                 os.mkdir(response_folder)
@@ -1118,7 +961,7 @@ class JewcobDownloader:
                 # get page response image
                 self.get_response_images(page, response_folder, padd)
 
-                # wait untill loader hides itsefl
+                # wait until loader hides itself
                 WebDriverWait(self.browser, self.timeout).until(
                     EC.invisibility_of_element_located((By.CLASS_NAME, "loader"))
                 )
@@ -1155,7 +998,7 @@ class JewcobDownloader:
 
                     log.debug("Get image from canvas")
                     destination_file = os.sep.join(
-                        [manga_abs_path, f"{page_num:0{padd}d}.png"]
+                        [manga_folder, f"{page_num:0{padd}d}.png"]
                     )
                     js_script = f"""
                     var dataURL = HTMLCanvasElement.%s.call(arguments[0], \"image/png\");
@@ -1177,7 +1020,7 @@ class JewcobDownloader:
                     resp_img = self.fakku_json["pages"][page]["response_path"]
                     ext = resp_img.split(".")[-1]
                     destination_file = os.sep.join(
-                        [manga_abs_path, f"{page_num:0{padd}d}.{ext}"]
+                        [manga_folder, f"{page_num:0{padd}d}.{ext}"]
                     )
                     shutil.copy(resp_img, destination_file)
                 self.fakku_json["pages"][page]["image_path"] = destination_file
@@ -1200,24 +1043,20 @@ class JewcobDownloader:
 
                     spread_name = namL + "-" + namR
                     destination_file_spread = os.sep.join(
-                        [manga_abs_path, f"{spread_name}a.png"]
+                        [manga_folder, f"{spread_name}a.png"]
                     )
 
                     combo = append_images(
                         fin_img,
                         direction="horizontal",
-                        aligment="none",
+                        alignment="none",
                         src_type=self.type,
                         dirc=direction,
                     )
                     combo.save(destination_file_spread)
 
-                    destination_file_L = os.sep.join(
-                        [manga_abs_path, f"{namL}b.{extL}"]
-                    )
-                    destination_file_R = os.sep.join(
-                        [manga_abs_path, f"{namR}c.{extR}"]
-                    )
+                    destination_file_L = os.sep.join([manga_folder, f"{namL}b.{extL}"])
+                    destination_file_R = os.sep.join([manga_folder, f"{namR}c.{extR}"])
 
                     shutil.move(imL, destination_file_L)
                     self.fakku_json["pages"][left]["image_path"] = destination_file_L
@@ -1295,68 +1134,6 @@ class JewcobDownloader:
             sleep(self.wait)
         self.program_exit()
 
-    '''
-    def load_urls_from_collection(self, collection_url):
-        """
-        Function which records the manga URLs inside a collection
-        """
-        log.debug("Loading urls from collection")
-        self.waiting_loading_page(collection_url, is_reader_page=False)
-        page_count = self.__get_page_count_in_collection()
-        with open(self.urls_file, "a") as f:
-            for page_num in tqdm(range(1, page_count + 1)):
-                if (
-                    page_num != 1
-                ):  # Fencepost problem, the first page of a collection is already loaded
-                    logging.info(f"{collection_url}/page/{page_num}")
-                    self.waiting_loading_page(
-                        f"{collection_url}/page/{page_num}", is_reader_page=False
-                    )
-
-                try:
-                    all_pages_book = self.browser.find_elements(
-                        By.CSS_SELECTOR, "a.book-title"
-                    )
-                    for a in all_pages_book:
-                        href = a.get_attribute("href")
-                        f.write(f"{href}\n")
-                except NoSuchElementException as err:
-                    pass
-                try:
-                    all_pages_content = self.browser.find_elements(
-                        By.CSS_SELECTOR, "a.content-title"
-                    )
-                    for a in all_pages_content:
-                        href = a.get_attribute("href")
-                        f.write(f"{href}\n")
-                except NoSuchElementException as err:
-                    pass
-
-    def __get_page_count_in_collection(self):
-        """
-        Get count of collection pages from html code
-        ----------------------------
-        param: page_source -- string
-            String that contains html code
-        return: int
-            Number of collection pages
-        """
-        log.debug("Getting page count in collection")
-        page_count = None
-        while not page_count:
-            try:
-                pagination = self.browser.find_element(By.CLASS_NAME, "pagination-meta")
-                pagination_text = pagination.text
-                page_count = int(
-                    re.search(r"Page\s+\d+\s+of\s+(\d+)", pagination_text).group(1)
-                )
-            except NoSuchElementException:
-                pass
-            sleep(self.wait)
-
-        return page_count
-    '''
-
     def __get_urls_list(self, urls_file, done_file):
         """
         Get list of urls from .txt file
@@ -1379,7 +1156,7 @@ class JewcobDownloader:
         with open(urls_file, "r") as f:
             for line in f:
                 clean_line = line.replace("\n", "")
-                if 'fakku.net/hentai/' not in clean_line:
+                if "fakku.net/hentai/" not in clean_line:
                     continue
                 if "#" in clean_line:
                     clean_line = clean_line.split("#")[0]
@@ -1435,6 +1212,7 @@ class JewcobDownloader:
                     "\nError: timed out waiting for page to load. Timeout increased +10 for more delaying."
                 )
                 self.timeout += 10
+                self.browser.set_page_load_timeout(self.timeout)
                 self.browser.refresh()
             if tried_2 > 10:
                 logging.info("Connection issues, Try again")
