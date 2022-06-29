@@ -17,16 +17,6 @@ from downloader import (
 
 def main():
     argparser = argparse.ArgumentParser()
-    # argparser.add_argument(
-    #    "-z",
-    #    "--collection_url",
-    #    type=str,
-    #    default=None,
-    #    help=f"Give a collection URL that will be parsed and loaded into urls.txt \
-    #        The normal operations of downloading manga images will not happen while this \
-    #        parameter is set. \
-    #        By default -- None, process the urls.txt instead",
-    # )
     argparser.add_argument(
         "-f",
         "--file_urls",
@@ -75,15 +65,15 @@ def main():
         "--timeout",
         type=float,
         default=TIMEOUT,
-        help=f"Timeout in seconds for loading first manga page. \
-            Increase this argument if quality of pages is bad. By default -- {TIMEOUT} sec",
+        help=f"Timeout in seconds for script and page loading. \
+            Increase when on slow connection like proxy. By default -- {TIMEOUT} sec",
     )
     argparser.add_argument(
         "-w",
         "--wait",
         type=float,
         default=WAIT,
-        help=f"Wait time in seconds for pauses beetween downloading pages \
+        help=f"Wait time in seconds for pauses between downloading pages \
             Increase this argument if you become blocked. By default -- {WAIT} sec",
     )
     argparser.add_argument(
@@ -119,19 +109,12 @@ def main():
         help=f"Store only basic info in metadata info.json file. \
          no parser, fast, -Magazine -Event -Circle -Price -Related -Chapters -Collections",
     )
-    # argparser.add_argument(
-    #    "--extra_metadata",
-    #    dest="extra_metadata",
-    #    action="store_true",
-    #    help=f"Store extra info in metadata info.json file.\
-    #    6+ parsers, slow +Comments",
-    # )
     argparser.add_argument(
         "--proxy",
         type=str,
         default=None,
         help="Use proxy server for connection. \
-         exaple: --proxy socks5://user:pass@192.168.10.100:8888",
+         example: --proxy socks5://user:pass@192.168.10.100:8888",
     )
     args = argparser.parse_args()
     log_handlers = []
@@ -147,7 +130,6 @@ def main():
         log_level = logging.INFO
         log_formatter_steam = logging.Formatter("%(message)s")
         log_formatter_file = ""
-        log_file = None
 
     # added logging for both console and file
     stream_handler = logging.StreamHandler()
@@ -176,13 +158,10 @@ def main():
     logging.getLogger("undetected_chromedriver").setLevel(logging.ERROR)
 
     file_urls = Path(args.file_urls)
-    # if args.collection_url:
-    #    Path(args.file_urls).touch()
     if not file_urls.is_file() or file_urls.stat().st_size == 0:
         logging.info(
             f"File {args.file_urls} does not exist or empty.\n"
             + "Create it and write the list of manga urls first.\n"
-            # + "Or run this again with the -z parameter with a collection_url to download urls first."
         )
         exit()
 
@@ -192,8 +171,6 @@ def main():
 
     if args.basic_metadata:
         args.metadata = "basic"
-    # elif args.extra_metadata:
-    #    args.metadata = "extra"
     elif args.metadata:
         args.metadata = "standard"
     else:
@@ -223,10 +200,6 @@ def main():
         logging.info(f"Using cookies file: {args.cookies_file}")
         loader.init_browser(gui=args.gui)
 
-    # if args.collection_url:
-    #    loader.load_urls_from_collection(args.collection_url)
-    # else:
-    #    loader.load_all()
     loader.load_all()
 
 
