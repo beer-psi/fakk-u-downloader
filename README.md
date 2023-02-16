@@ -74,7 +74,7 @@ Basically fakku is serving shitty color jpegs and most rippers are treating them
 1) Download or clone this repository
 2) Download and install [Python](https://www.python.org/downloads/release)  version >= 3.10
 3) Create **urls.txt** file in root folder and write into that urls of manga one by line
-4) Install all requirements for script via run **install.bat** (for Windows) or run <code>pip install -r requirements.txt</code>
+4) Install all requirements <code>pip install -r requirements.txt</code>
 5) Open root folder in command line and run the command <code>python main.py</code>
 
 ## Some features
