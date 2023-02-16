@@ -111,10 +111,17 @@ def main():
     )
     argparser.add_argument(
         "--proxy",
+        dest="proxy",
         type=str,
         default=None,
         help="Use proxy server for connection. \
          example: --proxy socks5://user:pass@192.168.10.100:8888",
+    )
+    argparser.add_argument(
+        "--response",
+        dest="response",
+        action="store_true",
+        help="Keep response directory with scrambled images and fakku api response file",
     )
     args = argparser.parse_args()
     log_handlers = []
@@ -154,7 +161,8 @@ def main():
     logging.getLogger("selenium.webdriver.remote.remote_connection").setLevel(
         logging.ERROR
     )
-    logging.getLogger("seleniumwire").setLevel(logging.ERROR)
+    logging.getLogger("trio-websocket").setLevel(logging.ERROR)
+    logging.getLogger("trio_cdp").setLevel(logging.ERROR)
     logging.getLogger("undetected_chromedriver").setLevel(logging.ERROR)
 
     file_urls = Path(args.file_urls)
@@ -190,7 +198,10 @@ def main():
         proxy=args.proxy,
     )
 
-    if not Path(args.cookies_file).is_file():
+    if Path(".session").is_dir() or Path("_session").is_dir():
+        logging.info(f"Using user data directory")
+        loader.init_browser(gui=args.gui)
+    elif not Path(args.cookies_file).is_file():
         logging.info(
             f"Cookies file({args.cookies_file}) are not detected. Please, "
             + "login in next step for generate cookie for next runs."
