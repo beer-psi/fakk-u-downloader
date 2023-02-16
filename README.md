@@ -102,7 +102,7 @@ selenium using `canvas.toblob()` can't save files outside of browser download lo
 selenium using cdp (Chrome DevTools Protocol) Fetch Domain with Selenium-Interceptor  
 stable, worked through 69 free links without an issue, slightly faster than selenium-wire, test took 42 sec  
 
-# Extra2: Enable controversial content
+# Extra: Enable controversial content
 
 https://archived.moe/h/thread/6271290/#6289883  
 https://archiveofsins.com/h/thread/6271290/#6289883  
