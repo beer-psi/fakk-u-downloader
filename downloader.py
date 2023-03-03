@@ -552,17 +552,23 @@ class JewcobDownloader:
 
         log.debug("Checking if user is logged")
         try:
-            self.browser.get(BASE_URL)
-            login_check = self.browser.find_element(
+            if self.browser.current_url != BASE_URL:
+                self.browser.get(BASE_URL)
+            caret = self.browser.find_element(
                 By.CSS_SELECTOR,
-                "span[class^='inline-block']",
+                "i.fa-caret-down",
+            )
+            login_check = caret.find_element(
+                By.XPATH,
+                "..",
             )
             cn = login_check.get_property("textContent")
             if cn != "My Account ":
                 log.info("You aren't logged in")
                 log.info("Probably expired cookies")
                 log.info("Remove cookies.json and try again")
-                log.debug(login_check)
+                log.debug(caret.get_attribute('outerHTML'))
+                log.debug(login_check.get_attribute('outerHTML'))
                 log.debug(cn)
                 self.browser.quit()
                 exit()
