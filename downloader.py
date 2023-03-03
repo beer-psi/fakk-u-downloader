@@ -555,7 +555,7 @@ class JewcobDownloader:
             self.browser.get(BASE_URL)
             login_check = self.browser.find_element(
                 By.CSS_SELECTOR,
-                "span.inline-block.text-base.text-white.font-normal.select-none.hover\:text-red-300",
+                "span[class^='inline-block']",
             )
             cn = login_check.get_property("textContent")
             if cn != "My Account ":
@@ -752,7 +752,7 @@ class JewcobDownloader:
             try:
                 meta0 = self.browser.find_element(
                     By.CSS_SELECTOR,
-                    'div[class^="block sm:table-cell relative w-full align-top"]',
+                    'div[class^="block md:table-cell relative w-full align-top"]',
                 )
                 meta_rows = meta0.find_elements(
                     By.CSS_SELECTOR, 'div[class^="table text-sm w-full"]'
@@ -807,11 +807,11 @@ class JewcobDownloader:
             try:
                 meta1 = self.browser.find_element(
                     By.CSS_SELECTOR,
-                    'div[class^="block sm:inline-block relative w-full align-top p-4 text-center space-y-4"]',
+                    'div[class^="block sm:inline-block relative w-full align-top"]',
                 )
                 price_container = meta1.find_element(
                     By.CSS_SELECTOR,
-                    'div[class^="rounded cursor-pointer right-0 bottom-0 m-1 sm:m-0 sm:right-2 sm:bottom-2 sm:left-auto"]',
+                    'div[class^="rounded cursor-pointer right"]',
                 )
                 try:
                     price_left = price_container.find_element(
@@ -886,6 +886,7 @@ class JewcobDownloader:
             except Exception as meta_err:
                 log.info(f"Metadata parser issue bottom, please report url: {url}")
                 log.info(str(meta_err))
+
             log.debug(metadata)
         return metadata
 
