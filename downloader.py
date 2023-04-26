@@ -553,7 +553,7 @@ class JewcobDownloader:
                 "..",
             )
             cn = login_check.get_property("textContent")
-            if cn != "My Account ":
+            if "My Account" not in cn:
                 log.debug(caret.get_attribute("outerHTML"))
                 log.debug(login_check.get_attribute("outerHTML"))
                 log.debug(cn)
@@ -1362,7 +1362,8 @@ class JewcobDownloader:
                 sleep(self.wait)
 
         if page == "main":
-            elem_xpath = "//div[contains(@class, 'group flex-1 relative align-top px-4 hidden sm:inline-block')]"
+            # background table with left (cover) and right (title, tags, description) columns
+            elem_xpath = "//div[contains(@class, 'rounded-md relative w-full table')]"
         elif page == "first":
             elem_xpath = "//div[@data-name='PageView']"
         else:
