@@ -1,0 +1,8 @@
+__pycache__
+env
+manga
+response
+cookies.*
+debug.log
+done.txt
+urls.txt

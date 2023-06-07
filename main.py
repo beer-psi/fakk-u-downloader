@@ -1,18 +1,12 @@
+__version__ = "v0.3.0"
+
 import argparse
 import logging
 import sys
 from pathlib import Path
 
-from downloader import (
-    COOKIES_FILE,
-    DONE_FILE,
-    JewcobDownloader,
-    ROOT_MANGA_DIR,
-    TIMEOUT,
-    URLS_FILE,
-    WAIT,
-    script_version,
-)
+from consts import COOKIES_FILE, DONE_FILE, ROOT_MANGA_DIR, TIMEOUT, URLS_FILE, WAIT
+from descramble_downloader import DescrambleDownloader
 
 
 def main():
@@ -84,10 +78,11 @@ def main():
                 Setting this creates a folder instead.",
     )
     argparser.add_argument(
-        "--GUI",
-        dest="gui",
-        action="store_true",
-        help=f"Run with browser in graphic mode. By default this program runs in headless mode.",
+        "--nooptimize",
+        dest="optimize",
+        action="store_false",
+        help=f"By default this program optimizes images losslessly with pingo (https://css-ig.net/pingo). \
+            Image optimization is disabled if this is set, or if pingo is not in PATH.",
     )
     argparser.add_argument(
         "--DEBUG",
@@ -123,6 +118,7 @@ def main():
         action="store_true",
         help="Keep response directory with scrambled images and fakku api response file",
     )
+
     args = argparser.parse_args()
     log_handlers = []
     if args.debug:
@@ -149,7 +145,7 @@ def main():
 
     log = logging.getLogger()
     if args.debug:
-        log.debug(f"Version: %s", script_version)
+        log.debug(f"Version: %s", __version__)
         log.debug("Python %s - %s", sys.version, sys.platform)
         log.debug(sys.argv)
         log.debug(args)
@@ -184,29 +180,18 @@ def main():
     else:
         args.metadata = "none"
 
-    loader = JewcobDownloader(
+    loader = DescrambleDownloader(
         urls_file=args.file_urls,
         done_file=args.done_file,
         cookies_file=args.cookies_file,
         root_manga_dir=args.output_dir,
-        login=args.login,
-        password=args.password,
         timeout=args.timeout,
         wait=args.wait,
         _zip=args.zip,
         save_metadata=args.metadata,
         proxy=args.proxy,
+        optimize=args.optimize,
     )
-
-    if not Path(args.cookies_file).is_file():
-        logging.info(
-            f"Cookies file({args.cookies_file}) are not detected. Please, "
-            + "login in next step for generate cookie for next runs."
-        )
-        loader.init_browser(auth=True, gui=args.gui)
-    else:
-        logging.info(f"Using cookies file: {args.cookies_file}")
-        loader.init_browser(gui=args.gui)
 
     loader.load_all()
 
