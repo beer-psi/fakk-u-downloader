@@ -2,6 +2,4 @@
 
 forked from https://gitgud.io/combtmp-w5f08/jewcob-downloader
 
-imagine using selenium
-
 dump cookies.txt from browser and drop into repository
