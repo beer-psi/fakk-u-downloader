@@ -543,9 +543,8 @@ class DescrambleDownloader:
                 subprocess.call(
                     [
                         "pingo",
-                        "-s9",
-                        "-strip",
-                        "-noconversion",
+                        "-lossless",
+                        "-nostrip",
                         "-notime",
                         manga_folder,
                     ],
