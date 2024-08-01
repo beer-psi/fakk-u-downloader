@@ -15,7 +15,6 @@ from time import sleep
 import requests
 import requests.utils
 from bs4 import BeautifulSoup
-from dateutil.parser import parse
 from PIL import Image
 from requests.cookies import RequestsCookieJar
 from tqdm import tqdm
@@ -102,10 +101,8 @@ class DescrambleDownloader:
                 "User-Agent": USER_AGENT,
                 "Origin": BASE_URL,
                 "Referer": f"{BASE_URL}/",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Cache-Control": "no-cache",
+                "Accept-Language": "en-US,en;q=0.5",
                 "DNT": "1",
-                "Pragma": "no-cache",
             }
         )
 
@@ -242,12 +239,12 @@ class DescrambleDownloader:
         else:
             folder_title = f"{title}{extra}"
 
-        manga_folder = os.sep.join([self.root_manga_dir, folder_title])
+        manga_folder = os.path.join(self.root_manga_dir, folder_title)
         if not os.path.exists(manga_folder):
             os.mkdir(manga_folder)
         log.debug(manga_folder)
 
-        response_folder = os.sep.join([self.root_response_dir, folder_title])
+        response_folder = os.path.join(self.root_response_dir, folder_title)
         if not os.path.exists(response_folder):
             os.mkdir(response_folder)
 
@@ -257,22 +254,31 @@ class DescrambleDownloader:
         self,
         url: str,
         key: list[int] | None = None,
-    ) -> tuple[bytes, bytes, float, str]:
+    ) -> tuple[bytes, bytes, str]:
         resp = self.session.get(
             url,
             timeout=self.timeout,
             headers={
-                "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+                "Accept": "image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
+                "Priority": "u=5, i",
                 "Sec-Fetch-Dest": "image",
                 "Sec-Fetch-Mode": "no-cors",
                 "Sec-Fetch-Site": "same-site",
             },
         )
-        lmt = parse(resp.headers["Last-Modified"]).astimezone().timestamp()
-        file_ext = resp.headers["Content-Type"].split("/")[-1].replace("jpeg", "jpg")
 
         if key is None:
-            return resp.content, resp.content, lmt, file_ext
+            img = Image.open(BytesIO(resp.content))
+
+            if img.format is None:
+                log.warning(f"Image is of unknown type: {url}")
+                file_ext = "bin"
+            elif img.format == "JPEG":
+                file_ext = "jpg"
+            else:
+                file_ext = img.format.lower()
+
+            return resp.content, resp.content, file_ext
 
         reordered = shuffle_array(key, key.pop())
 
@@ -324,7 +330,7 @@ class DescrambleDownloader:
             out.save(out_bytes, "PNG", quality=100, optimize=True)
             out_bytes.seek(0)
 
-            return resp.content, out_bytes.read(), lmt, "png"
+            return resp.content, out_bytes.read(), "png"
 
     def _is_gallery_available(self, doc) -> bool:
         elem = doc.select_one('a[class^="button-green"]')
@@ -438,7 +444,7 @@ class DescrambleDownloader:
                     num = page["page"]
                     image_url = page["image"]
 
-                    raw, image, lmt, ext = self._download_page(image_url, keys.get(idx))
+                    raw, image, ext = self._download_page(image_url, keys.get(idx))
 
                     filename = f"{num:0{padd}d}.{ext}"
 
@@ -446,12 +452,10 @@ class DescrambleDownloader:
                         resp_dest = os.path.join(response_folder, filename)
                         with open(resp_dest, "wb") as f:
                             f.write(raw)
-                        os.utime(resp_dest, (lmt, lmt))
 
                     dest = os.path.join(manga_folder, filename)
                     with open(dest, "wb") as f:
                         f.write(image)
-                    os.utime(dest, (lmt, lmt))
 
                     page["image_path"] = dest
 
@@ -474,14 +478,12 @@ class DescrambleDownloader:
                 im_l = fin_img[0]
                 im_r = fin_img[1]
 
-                nam_l = im_l.split(os.sep)[-1].split(".")[0]
-                ext_l = im_l.split(os.sep)[-1].split(".")[-1]
-                nam_r = im_r.split(os.sep)[-1].split(".")[0]
-                ext_r = im_r.split(os.sep)[-1].split(".")[-1]
+                nam_l, ext_l = os.path.splitext(im_l)
+                nam_r, ext_r = os.path.splitext(im_r)
 
                 spread_name = nam_l + "-" + nam_r
-                destination_file_spread = os.sep.join(
-                    [manga_folder, f"{spread_name}a.png"]
+                destination_file_spread = os.path.join(
+                    manga_folder, f"{spread_name}a.png"
                 )
 
                 combo = append_images(
@@ -492,18 +494,16 @@ class DescrambleDownloader:
                     dirc=direction,
                 )
                 combo.save(destination_file_spread)
-                im_r_mt = os.path.getmtime(im_r)
-                os.utime(destination_file_spread, (im_r_mt, im_r_mt))
 
                 api_data["pages"][left][
                     "image_path"
-                ] = destination_file_l = os.sep.join(
-                    [manga_folder, f"{nam_l}b.{ext_l}"]
+                ] = destination_file_l = os.path.join(
+                    manga_folder, f"{nam_l}b.{ext_l}"
                 )
                 api_data["pages"][right][
                     "image_path"
-                ] = destination_file_r = os.sep.join(
-                    [manga_folder, f"{nam_r}c.{ext_r}"]
+                ] = destination_file_r = os.path.join(
+                    manga_folder, f"{nam_r}c.{ext_r}"
                 )
 
                 shutil.move(im_l, destination_file_l)
@@ -534,14 +534,12 @@ class DescrambleDownloader:
                     metd[sd[0]] = sdd
 
                 log.debug("Dumping metadata in info.json file")
-                json_info_file = os.sep.join(
-                    [
-                        manga_folder,
-                        "info.json",
-                    ]
+                json_info_file = os.path.join(
+                    manga_folder,
+                    "info.json",
                 )
                 with open(json_info_file, "w", encoding="utf-8") as f:
-                    json.dump(metd, f, indent=True, ensure_ascii=False)
+                    json.dump(metd, f, indent=4, ensure_ascii=False)
 
             if self.zip:
                 log.debug("Creating a cbz and deleting the image folder after creation")

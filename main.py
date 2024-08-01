@@ -191,6 +191,7 @@ def main():
         save_metadata=args.metadata,
         proxy=args.proxy,
         optimize=args.optimize,
+        response=args.response,
     )
 
     loader.load_all()

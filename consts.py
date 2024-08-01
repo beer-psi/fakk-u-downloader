@@ -1,21 +1,9 @@
-import sys
-
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36 Edg/111.0.1661.62"
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:129.0) Gecko/20100101 Firefox/129.0"
 BASE_URL = "https://www.fakku.net"
-API_URL = "https://books.fakku.net"
+API_URL = "https://reader.fakku.net"
 LOGIN_URL = f"{BASE_URL}/login/"
 OPTIMIZE = True
-# Path to headless driver
-if sys.platform == "win32":
-    EXEC_PATH = "C:/Users/beerpiss/scoop/apps/chromedriver/current/chromedriver.exe"
-    BIN_PATH = r"C:\Users\beerpiss\scoop\apps\googlechrome\current\chrome.exe"
-    USER_PATH = "_session"
-    sp_c = "\\"
-else:
-    EXEC_PATH = "./chromedriver"
-    BIN_PATH = "./chrome"
-    USER_PATH = ".session"
-    sp_c = "/"
+
 # File with manga urls
 URLS_FILE = "urls.txt"
 # File with completed urls
