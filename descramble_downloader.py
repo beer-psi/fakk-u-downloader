@@ -14,6 +14,8 @@ from time import sleep
 
 import requests
 import requests.utils
+import lxml.etree
+import lxml.builder
 from bs4 import BeautifulSoup
 from PIL import Image
 from requests.cookies import RequestsCookieJar
@@ -32,6 +34,7 @@ from utils import (
 )
 
 log = logging.getLogger(__name__)
+E = lxml.builder.ElementMaker()
 
 
 class DescrambleDownloader:
@@ -337,6 +340,32 @@ class DescrambleDownloader:
         if elem is None or "Start Reading" not in elem.text:
             return False
         return True
+    
+    def _build_comicinfo_xml(self, metadata: dict) -> bytes:
+        if isinstance(metadata["Artist"], list):
+            artist = ", ".join(metadata["Artist"])
+        else:
+            artist = metadata["Artist"]
+
+        doc = E.ComicInfo(
+            E.Title(metadata["Title"]),
+            E.Penciller(artist),
+            E.Summary(metadata["Description"]),
+            E.LanguageISO(LANG_MAP[metadata["Language"]]),
+            E.PageCount(metadata["Pages"]),
+            E.Web(metadata["URL"]),
+            E.Genre(", ".join(metadata["Tags"])),
+            E.Publisher(metadata["Publisher"]),
+            E.AgeRating("R18+"),
+            E.Manga("Yes"),
+        )
+
+        if "Full Color" in metadata["Tags"]:
+            doc.append(E.BlackAndWhite("No"))
+        else:
+            doc.append(E.BlackAndWhite("Yes"))
+        
+        return b'<?xml version="1.0" encoding="utf-8"?>\n' + lxml.etree.tostring(doc, pretty_print=True)
 
     def load_all(self):
         log.debug("Starting main downloader function")
@@ -533,13 +562,18 @@ class DescrambleDownloader:
                         sdd = sd[1][0]
                     metd[sd[0]] = sdd
 
-                log.debug("Dumping metadata in info.json file")
+                log.debug("Dumping metadata in info.json/ComicInfo.xml file")
                 json_info_file = os.path.join(
                     manga_folder,
                     "info.json",
                 )
                 with open(json_info_file, "w", encoding="utf-8") as f:
                     json.dump(metd, f, indent=4, ensure_ascii=False)
+                
+                log.debug("Dumping ComicInfo.xml")
+                comicinfo_file = os.path.join(manga_folder, "ComicInfo.xml")
+                with open(comicinfo_file, "wb") as f:
+                    f.write(self._build_comicinfo_xml(metd))
 
             if self.zip:
                 log.debug("Creating a cbz and deleting the image folder after creation")

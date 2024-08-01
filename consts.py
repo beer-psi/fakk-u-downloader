@@ -20,3 +20,10 @@ TIMEOUT = 10
 WAIT = 0.1
 # Should a cbz archive file be created
 ZIP = False
+
+LANG_MAP = {
+    "English": "en",
+    "Spanish": "es",
+    "Japanese": "ja",
+    "Chinese": "zh",
+}
