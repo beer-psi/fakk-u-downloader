@@ -478,8 +478,8 @@ class DescrambleDownloader:
                 im_l = fin_img[0]
                 im_r = fin_img[1]
 
-                nam_l, ext_l = os.path.splitext(im_l)
-                nam_r, ext_r = os.path.splitext(im_r)
+                nam_l, ext_l = os.path.splitext(os.path.basename(im_l))
+                nam_r, ext_r = os.path.splitext(os.path.basename(im_r))
 
                 spread_name = nam_l + "-" + nam_r
                 destination_file_spread = os.path.join(
@@ -543,8 +543,7 @@ class DescrambleDownloader:
 
             if self.zip:
                 log.debug("Creating a cbz and deleting the image folder after creation")
-                archive_name = shutil.make_archive(chapter_id, "cbz", manga_folder)
-                shutil.move(archive_name, self.root_manga_dir)
+                shutil.make_archive(manga_folder, "cbz", manga_folder)
                 shutil.rmtree(manga_folder)
 
             if not self.keep_response:
