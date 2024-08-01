@@ -11,7 +11,7 @@ export default class Fakku extends Connector {
 
         this.tags = ['hentai', 'english'];
         this.url = 'https://www.fakku.net';
-        this.api = 'https://books.fakku.net';
+        this.api = 'https://reader.fakku.net';
 
         this.requestOptions.headers.set('x-referer', `${this.url}/`);
 
@@ -67,7 +67,7 @@ export default class Fakku extends Connector {
 
     async _getPages(chapter) {
         // Needed to fetch cookies
-        const dom = await this.fetchDOM(new URL(`${chapter.id}/read/page/1`, this.url), 'div h3');
+        const dom = await this.fetchDOM(new URL(`${chapter.id}/read`, this.url), 'div h3');
         if (dom.length > 0 && dom[0].textContent === 'You do not have access to this content.') {
             throw new Error("You do not have access to this content. Maybe you haven't bought it?");
         }
