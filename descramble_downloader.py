@@ -356,7 +356,6 @@ class DescrambleDownloader:
             E.Web(metadata["URL"]),
             E.Genre(", ".join(metadata["Tags"])),
             E.Publisher(metadata["Publisher"]),
-            E.AgeRating("R18+"),
             E.Manga("Yes"),
         )
 
@@ -364,6 +363,9 @@ class DescrambleDownloader:
             doc.append(E.BlackAndWhite("No"))
         else:
             doc.append(E.BlackAndWhite("Yes"))
+        
+        if "Hentai" in metadata["Tags"] or "Ecchi" in metadata["Tags"]:
+            doc.append(E.AgeRating("R18+"))
         
         return b'<?xml version="1.0" encoding="utf-8"?>\n' + lxml.etree.tostring(doc, pretty_print=True)
 
