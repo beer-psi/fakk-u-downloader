@@ -75,10 +75,14 @@ class DescrambleDownloader:
 
         self.keep_response = response
 
-        self.optimize = optimize
-        if optimize and shutil.which("pingo") is None:
-            log.warning("Pingo not found, disabling optimization")
-            self.optimize = False
+        if optimize:
+            if shutil.which("pingo") is not None:
+                self.optimize = "pingo"
+            elif shutil.which("ect") is not None:
+                self.optimize = "ect"
+            else:
+                log.warning("Pingo/ECT not found, disabling optimization")
+                self.optimize = None
 
         cookies_ext = os.path.splitext(cookies_file)[1]
 
@@ -257,7 +261,7 @@ class DescrambleDownloader:
         self,
         url: str,
         key: list[int] | None = None,
-    ) -> tuple[bytes, bytes, str]:
+    ) -> tuple[bytes, str, bytes, str]:
         resp = self.session.get(
             url,
             timeout=self.timeout,
@@ -270,37 +274,36 @@ class DescrambleDownloader:
             },
         )
 
-        if key is None:
-            img = Image.open(BytesIO(resp.content))
-
-            if img.format is None:
-                log.warning(f"Image is of unknown type: {url}")
-                file_ext = "bin"
-            elif img.format == "JPEG":
-                file_ext = "jpg"
-            else:
-                file_ext = img.format.lower()
-
-            return resp.content, resp.content, file_ext
-
-        reordered = shuffle_array(key, key.pop())
-
-        xor = reordered[2]
-        width = reordered[0] ^ xor
-        height = reordered[1] ^ xor
-
-        log.debug(f"Image: {width}x{height}, seed {xor}")
-
-        is_horizontal = width > height
-        if is_horizontal:
-            smaller_edge = height
-        else:
-            smaller_edge = width
-        offset = 128 * ceil(smaller_edge / 128) - smaller_edge
-        width_pieces = ceil(width / 128)
-        height_pieces = ceil(height / 128)
-
         with Image.open(BytesIO(resp.content)) as image:
+            if image.format is None:
+                log.warning(f"Image is of unknown type: {url}")
+                raw_ext = "bin"
+            elif image.format == "JPEG":
+                raw_ext = "jpg"
+            else:
+                raw_ext = image.format.lower()
+            
+            if key is None:
+                return resp.content, raw_ext, resp.content, raw_ext
+            
+            reordered = shuffle_array(key, key.pop())
+
+            xor = reordered[2]
+            width = reordered[0] ^ xor
+            height = reordered[1] ^ xor
+
+            log.debug(f"Image: {width}x{height}, seed {xor}")
+
+            is_horizontal = width > height
+            if is_horizontal:
+                smaller_edge = height
+            else:
+                smaller_edge = width
+
+            offset = 128 * ceil(smaller_edge / 128) - smaller_edge
+            width_pieces = ceil(width / 128)
+            height_pieces = ceil(height / 128)
+
             out = Image.new("RGB", (width, height))
 
             piece_order = randomize(list(range(width_pieces * height_pieces)), xor)
@@ -333,7 +336,7 @@ class DescrambleDownloader:
             out.save(out_bytes, "PNG", quality=100, optimize=True)
             out_bytes.seek(0)
 
-            return resp.content, out_bytes.read(), "png"
+            return resp.content, raw_ext, out_bytes.read(), "png"
 
     def _is_gallery_available(self, doc) -> bool:
         elem = doc.select_one('a[class^="button-green"]')
@@ -475,12 +478,13 @@ class DescrambleDownloader:
                     num = page["page"]
                     image_url = page["image"]
 
-                    raw, image, ext = self._download_page(image_url, keys.get(idx))
+                    raw, raw_ext, image, ext = self._download_page(image_url, keys.get(idx))
 
+                    raw_filename = f"{num:0{padd}d}.{raw_ext}"
                     filename = f"{num:0{padd}d}.{ext}"
 
                     if self.keep_response:
-                        resp_dest = os.path.join(response_folder, filename)
+                        resp_dest = os.path.join(response_folder, raw_filename)
                         with open(resp_dest, "wb") as f:
                             f.write(raw)
 
@@ -540,8 +544,8 @@ class DescrambleDownloader:
                 shutil.move(im_l, destination_file_l)
                 shutil.move(im_r, destination_file_r)
 
-            if self.optimize:
-                log.info("Optimizing images")
+            if self.optimize == "pingo":
+                log.info("Optimizing images using pingo")
                 subprocess.call(
                     [
                         "pingo",
@@ -549,6 +553,19 @@ class DescrambleDownloader:
                         "-nostrip",
                         "-notime",
                         manga_folder,
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            elif self.optimize == "ect":
+                log.info("Optimizing images using ect")
+                subprocess.call(
+                    [
+                        "ect",
+                        "--mt-file",
+                        "--mt-deflate",
+                        "--strict",
+                        manga_folder
                     ],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
