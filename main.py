@@ -57,7 +57,7 @@ def main():
     argparser.add_argument(
         "-t",
         "--timeout",
-        type=float,
+        type=int,
         default=TIMEOUT,
         help=f"Timeout in seconds for script and page loading. \
             Increase when on slow connection like proxy. By default -- {TIMEOUT} sec",
