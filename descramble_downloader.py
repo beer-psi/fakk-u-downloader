@@ -1,4 +1,5 @@
 import concurrent.futures
+import contextlib
 import json
 import logging
 import os
@@ -233,32 +234,32 @@ class DescrambleDownloader:
         url: str,
         key: list[int] | None = None,
     ) -> tuple[bytes, str, bytes, str]:
-        c = curl.Curl(
-            url,
-            (
-                "Accept: image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
-                "Accept-Language: en-US,en;q=0.5",
-                "Sec-GPC: 1",
-                "Connection: keep-alive",
-                f"Referer: {BASE_URL}/",
-                "Sec-Fetch-Dest: image",
-                "Sec-Fetch-Mode: no-cors",
-                "Sec-Fetch-Site: same-site",
-                "Priority: u=5, i",
-                "TE: trailers",
+        with contextlib.closing(
+            curl.Curl(
+                url,
+                (
+                    "Accept: image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
+                    "Accept-Language: en-US,en;q=0.5",
+                    "Sec-GPC: 1",
+                    "Connection: keep-alive",
+                    f"Referer: {BASE_URL}/",
+                    "Sec-Fetch-Dest: image",
+                    "Sec-Fetch-Mode: no-cors",
+                    "Sec-Fetch-Site: same-site",
+                    "Priority: u=5, i",
+                    "TE: trailers",
+                )
             )
-        )
-        c.set_timeout(self.timeout)
-        c.set_option(pycurl.COOKIEFILE, self.cookies_file)  
-        c.set_option(pycurl.COOKIEJAR, self.cookies_file)
-        c.set_option(pycurl.USERAGENT, USER_AGENT)
-        c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
-        c.set_option(pycurl.ACCEPT_ENCODING, "")
-        c.set_option(pycurl.PROXY, self.proxy)
+        ) as c:
+            c.set_timeout(self.timeout)
+            c.set_option(pycurl.COOKIEFILE, self.cookies_file)
+            c.set_option(pycurl.COOKIEJAR, self.cookies_file)
+            c.set_option(pycurl.USERAGENT, USER_AGENT)
+            c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
+            c.set_option(pycurl.ACCEPT_ENCODING, "")
+            c.set_option(pycurl.PROXY, self.proxy)
 
-        content = c.get(url)
-
-        c.close()
+            content = c.get(url)
 
         with Image.open(BytesIO(content)) as image:
             if image.format is None:
@@ -268,10 +269,10 @@ class DescrambleDownloader:
                 raw_ext = "jpg"
             else:
                 raw_ext = image.format.lower()
-            
-            if key is None:
+
+            if key is None or len(key) == 0:
                 return content, raw_ext, content, raw_ext
-            
+
             reordered = shuffle_array(key, key.pop())
 
             xor = reordered[2]
@@ -329,7 +330,7 @@ class DescrambleDownloader:
         if elem is None or "Start Reading" not in elem.text:
             return False
         return True
-    
+
     def _build_comicinfo_xml(self, metadata: dict) -> bytes:
         if isinstance(metadata["Artist"], list):
             artist = ", ".join(metadata["Artist"])
@@ -352,10 +353,10 @@ class DescrambleDownloader:
             doc.append(E.BlackAndWhite("No"))
         else:
             doc.append(E.BlackAndWhite("Yes"))
-        
+
         if "Hentai" in metadata["Tags"] or "Ecchi" in metadata["Tags"]:
             doc.append(E.AgeRating("R18+"))
-        
+
         return b'<?xml version="1.0" encoding="utf-8"?>\n' + lxml.etree.tostring(doc, pretty_print=True)
 
     def load_all(self):
@@ -370,34 +371,34 @@ class DescrambleDownloader:
         for url in self.urls:
             log.info(url)
 
-            c = curl.Curl(
-                url,
-                (
-                    "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Accept-Language: en-US,en;q=0.5",
-                    "Sec-GPC: 1",
-                    "Connection: keep-alive",
-                    f"Referer: {BASE_URL}/",
-                    "Upgrade-Insecure-Requests: 1",
-                    "Sec-Fetch-Dest: document",
-                    "Sec-Fetch-Mode: navigate",
-                    "Sec-Fetch-Site: same-origin",
-                    "Sec-Fetch-User: ?1",
-                    "Priority: u=0, i",
-                    "TE: trailers",
+            with contextlib.closing(
+                curl.Curl(
+                    url,
+                    (
+                        "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                        "Accept-Language: en-US,en;q=0.5",
+                        "Sec-GPC: 1",
+                        "Connection: keep-alive",
+                        f"Referer: {BASE_URL}/",
+                        "Upgrade-Insecure-Requests: 1",
+                        "Sec-Fetch-Dest: document",
+                        "Sec-Fetch-Mode: navigate",
+                        "Sec-Fetch-Site: same-origin",
+                        "Sec-Fetch-User: ?1",
+                        "Priority: u=0, i",
+                        "TE: trailers",
+                    )
                 )
-            )
-            c.set_timeout(self.timeout)
-            c.set_option(pycurl.COOKIEFILE, self.cookies_file) 
-            c.set_option(pycurl.COOKIEJAR, self.cookies_file)      
-            c.set_option(pycurl.USERAGENT, USER_AGENT)
-            c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
-            c.set_option(pycurl.ACCEPT_ENCODING, "")
-            c.set_option(pycurl.PROXY, self.proxy)
+            ) as c:
+                c.set_timeout(self.timeout)
+                c.set_option(pycurl.COOKIEFILE, self.cookies_file)
+                c.set_option(pycurl.COOKIEJAR, self.cookies_file)
+                c.set_option(pycurl.USERAGENT, USER_AGENT)
+                c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
+                c.set_option(pycurl.ACCEPT_ENCODING, "")
+                c.set_option(pycurl.PROXY, self.proxy)
 
-            content = c.get(url)
-
-            c.close()
+                content = c.get(url)
 
             doc = BeautifulSoup(content.decode("utf-8"), "lxml")
 
@@ -417,67 +418,67 @@ class DescrambleDownloader:
 
             log.info(f'Downloading "{chapter_id}" manga.')
 
-            c = curl.Curl(
-                f"{url}/read",
-                (
-                    "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Accept-Language: en-US,en;q=0.5",
-                    "Sec-GPC: 1",
-                    "Connection: keep-alive",
-                    f"Referer: {url}",
-                    "Upgrade-Insecure-Requests: 1",
-                    "Sec-Fetch-Dest: document",
-                    "Sec-Fetch-Mode: navigate",
-                    "Sec-Fetch-Site: same-origin",
-                    "Sec-Fetch-User: ?1",
-                    "Priority: u=0, i",
-                    "TE: trailers",
+            with contextlib.closing(
+                curl.Curl(
+                    f"{url}/read",
+                    (
+                        "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                        "Accept-Language: en-US,en;q=0.5",
+                        "Sec-GPC: 1",
+                        "Connection: keep-alive",
+                        f"Referer: {url}",
+                        "Upgrade-Insecure-Requests: 1",
+                        "Sec-Fetch-Dest: document",
+                        "Sec-Fetch-Mode: navigate",
+                        "Sec-Fetch-Site: same-origin",
+                        "Sec-Fetch-User: ?1",
+                        "Priority: u=0, i",
+                        "TE: trailers",
+                    )
                 )
-            )
-            c.set_timeout(self.timeout)
-            c.set_option(pycurl.COOKIEFILE, self.cookies_file)   
-            c.set_option(pycurl.COOKIEJAR, self.cookies_file)    
-            c.set_option(pycurl.USERAGENT, USER_AGENT)
-            c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
-            c.set_option(pycurl.ACCEPT_ENCODING, "")
-            c.set_option(pycurl.PROXY, self.proxy)
+            ) as c:
+                c.set_timeout(self.timeout)
+                c.set_option(pycurl.COOKIEFILE, self.cookies_file)
+                c.set_option(pycurl.COOKIEJAR, self.cookies_file)
+                c.set_option(pycurl.USERAGENT, USER_AGENT)
+                c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
+                c.set_option(pycurl.ACCEPT_ENCODING, "")
+                c.set_option(pycurl.PROXY, self.proxy)
 
-            read_content = c.get(f"{url}/read")
+                read_content = c.get(f"{url}/read")
 
-            c.close()
-            
             if "You do not have access to this content." in read_content.decode("utf-8"):
                 log.info(f"You do not have access to this content: {url}")
                 urls_processed += 1
                 continue
 
-            c = curl.Curl(
-                f"{API_URL}/hentai/{chapter_id}/read",
-                (
-                    "Accept: */*",
-                    "Accept-Language: en-US,en;q=0.5",
-                    f"Referer: {BASE_URL}/",
-                    f"Origin: {BASE_URL}",
-                    "Sec-GPC: 1",
-                    "Connection: keep-alive",
-                    "Sec-Fetch-Dest: empty",
-                    "Sec-Fetch-Mode: cors",
-                    "Sec-Fetch-Site: same-site",
-                    "Priority: u=4",
-                    "TE: trailers",
+            with contextlib.closing(
+                curl.Curl(
+                    f"{API_URL}/hentai/{chapter_id}/read",
+                    (
+                        "Accept: */*",
+                        "Accept-Language: en-US,en;q=0.5",
+                        f"Referer: {BASE_URL}/",
+                        f"Origin: {BASE_URL}",
+                        "Sec-GPC: 1",
+                        "Connection: keep-alive",
+                        "Sec-Fetch-Dest: empty",
+                        "Sec-Fetch-Mode: cors",
+                        "Sec-Fetch-Site: same-site",
+                        "Priority: u=4",
+                        "TE: trailers",
+                    )
                 )
-            )
-            c.set_timeout(self.timeout)
-            c.set_option(pycurl.COOKIEFILE, self.cookies_file)
-            c.set_option(pycurl.COOKIEJAR, self.cookies_file)  
-            c.set_option(pycurl.USERAGENT, USER_AGENT)
-            c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
-            c.set_option(pycurl.ACCEPT_ENCODING, "")
-            c.set_option(pycurl.PROXY, self.proxy)
+            ) as c:
+                c.set_timeout(self.timeout)
+                c.set_option(pycurl.COOKIEFILE, self.cookies_file)
+                c.set_option(pycurl.COOKIEJAR, self.cookies_file)
+                c.set_option(pycurl.USERAGENT, USER_AGENT)
+                c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
+                c.set_option(pycurl.ACCEPT_ENCODING, "")
+                c.set_option(pycurl.PROXY, self.proxy)
 
-            api_content = c.get(f"{API_URL}/hentai/{chapter_id}/read")
-
-            c.close()
+                api_content = c.get(f"{API_URL}/hentai/{chapter_id}/read")
 
             try:
                 api_data = json.loads(api_content)
@@ -509,7 +510,7 @@ class DescrambleDownloader:
                 jar.load()
 
                 fakku_zid = None
-                
+
                 for cookie in jar:
                     if cookie.domain == ".fakku.net" and cookie.name == "fakku_zid":
                         fakku_zid = cookie.value
@@ -663,7 +664,7 @@ class DescrambleDownloader:
                 )
                 with open(json_info_file, "w", encoding="utf-8") as f:
                     json.dump(metd, f, indent=4, ensure_ascii=False)
-                
+
                 log.debug("Dumping ComicInfo.xml")
                 comicinfo_file = os.path.join(manga_folder, "ComicInfo.xml")
                 with open(comicinfo_file, "wb") as f:
