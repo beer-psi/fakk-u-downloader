@@ -82,6 +82,7 @@ class DescrambleDownloader:
                 self.optimize = None
 
         self.cookies_file = cookies_file
+        self.proxy = proxy
 
     def get_page_metadata(self, doc: BeautifulSoup) -> OrderedDict:
         metadata = OrderedDict()
@@ -238,6 +239,7 @@ class DescrambleDownloader:
                 "Accept: image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
                 "Accept-Language: en-US,en;q=0.5",
                 "Sec-GPC: 1",
+                "Connection: keep-alive",
                 f"Referer: {BASE_URL}/",
                 "Sec-Fetch-Dest: image",
                 "Sec-Fetch-Mode: no-cors",
@@ -252,6 +254,7 @@ class DescrambleDownloader:
         c.set_option(pycurl.USERAGENT, USER_AGENT)
         c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
         c.set_option(pycurl.ACCEPT_ENCODING, "")
+        c.set_option(pycurl.PROXY, self.proxy)
 
         content = c.get(url)
 
@@ -373,6 +376,7 @@ class DescrambleDownloader:
                     "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                     "Accept-Language: en-US,en;q=0.5",
                     "Sec-GPC: 1",
+                    "Connection: keep-alive",
                     f"Referer: {BASE_URL}/",
                     "Upgrade-Insecure-Requests: 1",
                     "Sec-Fetch-Dest: document",
@@ -389,6 +393,7 @@ class DescrambleDownloader:
             c.set_option(pycurl.USERAGENT, USER_AGENT)
             c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
             c.set_option(pycurl.ACCEPT_ENCODING, "")
+            c.set_option(pycurl.PROXY, self.proxy)
 
             content = c.get(url)
 
@@ -418,6 +423,7 @@ class DescrambleDownloader:
                     "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                     "Accept-Language: en-US,en;q=0.5",
                     "Sec-GPC: 1",
+                    "Connection: keep-alive",
                     f"Referer: {url}",
                     "Upgrade-Insecure-Requests: 1",
                     "Sec-Fetch-Dest: document",
@@ -434,6 +440,7 @@ class DescrambleDownloader:
             c.set_option(pycurl.USERAGENT, USER_AGENT)
             c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
             c.set_option(pycurl.ACCEPT_ENCODING, "")
+            c.set_option(pycurl.PROXY, self.proxy)
 
             read_content = c.get(f"{url}/read")
 
@@ -452,6 +459,7 @@ class DescrambleDownloader:
                     f"Referer: {BASE_URL}/",
                     f"Origin: {BASE_URL}",
                     "Sec-GPC: 1",
+                    "Connection: keep-alive",
                     "Sec-Fetch-Dest: empty",
                     "Sec-Fetch-Mode: cors",
                     "Sec-Fetch-Site: same-site",
@@ -465,6 +473,7 @@ class DescrambleDownloader:
             c.set_option(pycurl.USERAGENT, USER_AGENT)
             c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
             c.set_option(pycurl.ACCEPT_ENCODING, "")
+            c.set_option(pycurl.PROXY, self.proxy)
 
             api_content = c.get(f"{API_URL}/hentai/{chapter_id}/read")
 
