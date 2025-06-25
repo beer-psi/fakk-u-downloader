@@ -557,6 +557,10 @@ class DescrambleDownloader:
             for spread in tqdm(spreads.values(), desc="Joining spreads", unit="spread"):
                 left, right = spread
 
+                if left not in api_data["pages"] or right not in api_data["pages"]:
+                    log.warning("Requested to join non-existent pages (%s, %s), ignoring", left, right)
+                    continue
+
                 fin_img = [
                     api_data["pages"][left]["image_path"],
                     api_data["pages"][right]["image_path"],
