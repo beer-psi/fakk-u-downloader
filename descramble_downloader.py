@@ -243,12 +243,15 @@ class DescrambleDownloader:
                 "Sec-Fetch-Mode: no-cors",
                 "Sec-Fetch-Site: same-site",
                 "Priority: u=5, i",
+                "TE: trailers",
             )
         )
         c.set_timeout(self.timeout)
         c.set_option(pycurl.COOKIEFILE, self.cookies_file)  
         c.set_option(pycurl.COOKIEJAR, self.cookies_file)
         c.set_option(pycurl.USERAGENT, USER_AGENT)
+        c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
+        c.set_option(pycurl.ACCEPT_ENCODING, "")
 
         content = c.get(url)
 
@@ -377,12 +380,15 @@ class DescrambleDownloader:
                     "Sec-Fetch-Site: same-origin",
                     "Sec-Fetch-User: ?1",
                     "Priority: u=0, i",
+                    "TE: trailers",
                 )
             )
             c.set_timeout(self.timeout)
             c.set_option(pycurl.COOKIEFILE, self.cookies_file) 
             c.set_option(pycurl.COOKIEJAR, self.cookies_file)      
             c.set_option(pycurl.USERAGENT, USER_AGENT)
+            c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
+            c.set_option(pycurl.ACCEPT_ENCODING, "")
 
             content = c.get(url)
 
@@ -419,12 +425,15 @@ class DescrambleDownloader:
                     "Sec-Fetch-Site: same-origin",
                     "Sec-Fetch-User: ?1",
                     "Priority: u=0, i",
+                    "TE: trailers",
                 )
             )
             c.set_timeout(self.timeout)
             c.set_option(pycurl.COOKIEFILE, self.cookies_file)   
             c.set_option(pycurl.COOKIEJAR, self.cookies_file)    
             c.set_option(pycurl.USERAGENT, USER_AGENT)
+            c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
+            c.set_option(pycurl.ACCEPT_ENCODING, "")
 
             read_content = c.get(f"{url}/read")
 
@@ -447,12 +456,15 @@ class DescrambleDownloader:
                     "Sec-Fetch-Mode: cors",
                     "Sec-Fetch-Site: same-site",
                     "Priority: u=4",
+                    "TE: trailers",
                 )
             )
             c.set_timeout(self.timeout)
             c.set_option(pycurl.COOKIEFILE, self.cookies_file)
             c.set_option(pycurl.COOKIEJAR, self.cookies_file)  
             c.set_option(pycurl.USERAGENT, USER_AGENT)
+            c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
+            c.set_option(pycurl.ACCEPT_ENCODING, "")
 
             api_content = c.get(f"{API_URL}/hentai/{chapter_id}/read")
 
