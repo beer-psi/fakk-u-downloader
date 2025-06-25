@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from http import cookiejar
 from io import BytesIO
 from math import ceil
+import threading
 from time import sleep
 
 import curl
@@ -84,6 +85,7 @@ class DescrambleDownloader:
 
         self.cookies_file = cookies_file
         self.proxy = proxy
+        self._cookies_lock = threading.Lock()
 
     def get_page_metadata(self, doc: BeautifulSoup) -> OrderedDict:
         metadata = OrderedDict()
@@ -234,7 +236,7 @@ class DescrambleDownloader:
         url: str,
         key: list[int] | None = None,
     ) -> tuple[bytes, str, bytes, str]:
-        with contextlib.closing(
+        with self._cookies_lock, contextlib.closing(
             curl.Curl(
                 url,
                 (
@@ -371,7 +373,7 @@ class DescrambleDownloader:
         for url in self.urls:
             log.info(url)
 
-            with contextlib.closing(
+            with self._cookies_lock, contextlib.closing(
                 curl.Curl(
                     url,
                     (
@@ -418,7 +420,7 @@ class DescrambleDownloader:
 
             log.info(f'Downloading "{chapter_id}" manga.')
 
-            with contextlib.closing(
+            with self._cookies_lock, contextlib.closing(
                 curl.Curl(
                     f"{url}/read",
                     (
@@ -452,7 +454,7 @@ class DescrambleDownloader:
                 urls_processed += 1
                 continue
 
-            with contextlib.closing(
+            with self._cookies_lock, contextlib.closing(
                 curl.Curl(
                     f"{API_URL}/hentai/{chapter_id}/read",
                     (
