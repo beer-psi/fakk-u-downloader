@@ -1,4 +1,4 @@
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:129.0) Gecko/20100101 Firefox/129.0"
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:141.0) Gecko/20100101 Firefox/141.0"
 BASE_URL = "https://www.fakku.net"
 API_URL = "https://reader.fakku.net"
 LOGIN_URL = f"{BASE_URL}/login/"

@@ -12,13 +12,12 @@ from io import BytesIO
 from math import ceil
 from time import sleep
 
-import requests
-import requests.utils
-import lxml.etree
+import curl
 import lxml.builder
+import lxml.etree
+import pycurl
 from bs4 import BeautifulSoup
 from PIL import Image
-from requests.cookies import RequestsCookieJar
 from tqdm import tqdm
 
 from consts import *
@@ -43,8 +42,6 @@ class DescrambleDownloader:
     The idea is simple, we download the images and descramble locally, removing the need
     for any selenium bullshit.
     """
-
-    cookies: RequestsCookieJar
 
     def __init__(
         self,
@@ -84,34 +81,7 @@ class DescrambleDownloader:
                 log.warning("Pingo/ECT not found, disabling optimization")
                 self.optimize = None
 
-        cookies_ext = os.path.splitext(cookies_file)[1]
-
-        self.session = requests.Session()
-        if proxy is not None:
-            self.session.proxies.update({"https": proxy})
-
-        if cookies_ext == ".json":
-            with open(cookies_file, "r") as f:
-                data = json.load(f)
-            requests.utils.cookiejar_from_dict(data, cookiejar=self.session.cookies)
-        elif cookies_ext == ".txt":
-            cookies = cookiejar.MozillaCookieJar(cookies_file)
-            cookies.load()
-
-            for cookie in cookies:
-                self.session.cookies.set_cookie(cookie)
-        else:
-            raise ValueError("Unknown cookies file format")
-
-        self.session.headers.update(
-            {
-                "User-Agent": USER_AGENT,
-                "Origin": BASE_URL,
-                "Referer": f"{BASE_URL}/",
-                "Accept-Language": "en-US,en;q=0.5",
-                "DNT": "1",
-            }
-        )
+        self.cookies_file = cookies_file
 
     def get_page_metadata(self, doc: BeautifulSoup) -> OrderedDict:
         metadata = OrderedDict()
@@ -262,19 +232,29 @@ class DescrambleDownloader:
         url: str,
         key: list[int] | None = None,
     ) -> tuple[bytes, str, bytes, str]:
-        resp = self.session.get(
+        c = curl.Curl(
             url,
-            timeout=self.timeout,
-            headers={
-                "Accept": "image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
-                "Priority": "u=5, i",
-                "Sec-Fetch-Dest": "image",
-                "Sec-Fetch-Mode": "no-cors",
-                "Sec-Fetch-Site": "same-site",
-            },
+            (
+                "Accept: image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
+                "Accept-Language: en-US,en;q=0.5",
+                "Sec-GPC: 1",
+                f"Referer: {BASE_URL}/",
+                "Sec-Fetch-Dest: image",
+                "Sec-Fetch-Mode: no-cors",
+                "Sec-Fetch-Site: same-site",
+                "Priority: u=5, i",
+            )
         )
+        c.set_timeout(self.timeout)
+        c.set_option(pycurl.COOKIEFILE, self.cookies_file)  
+        c.set_option(pycurl.COOKIEJAR, self.cookies_file)
+        c.set_option(pycurl.USERAGENT, USER_AGENT)
 
-        with Image.open(BytesIO(resp.content)) as image:
+        content = c.get(url)
+
+        c.close()
+
+        with Image.open(BytesIO(content)) as image:
             if image.format is None:
                 log.warning(f"Image is of unknown type: {url}")
                 raw_ext = "bin"
@@ -284,7 +264,7 @@ class DescrambleDownloader:
                 raw_ext = image.format.lower()
             
             if key is None:
-                return resp.content, raw_ext, resp.content, raw_ext
+                return content, raw_ext, content, raw_ext
             
             reordered = shuffle_array(key, key.pop())
 
@@ -336,7 +316,7 @@ class DescrambleDownloader:
             out.save(out_bytes, "PNG", quality=100, optimize=True)
             out_bytes.seek(0)
 
-            return resp.content, raw_ext, out_bytes.read(), "png"
+            return content, raw_ext, out_bytes.read(), "png"
 
     def _is_gallery_available(self, doc) -> bool:
         elem = doc.select_one('a[class^="button-green"]')
@@ -384,8 +364,31 @@ class DescrambleDownloader:
         for url in self.urls:
             log.info(url)
 
-            resp = self.session.get(url, timeout=self.timeout)
-            doc = BeautifulSoup(resp.text, "lxml")
+            c = curl.Curl(
+                url,
+                (
+                    "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language: en-US,en;q=0.5",
+                    "Sec-GPC: 1",
+                    f"Referer: {BASE_URL}/",
+                    "Upgrade-Insecure-Requests: 1",
+                    "Sec-Fetch-Dest: document",
+                    "Sec-Fetch-Mode: navigate",
+                    "Sec-Fetch-Site: same-origin",
+                    "Sec-Fetch-User: ?1",
+                    "Priority: u=0, i",
+                )
+            )
+            c.set_timeout(self.timeout)
+            c.set_option(pycurl.COOKIEFILE, self.cookies_file) 
+            c.set_option(pycurl.COOKIEJAR, self.cookies_file)      
+            c.set_option(pycurl.USERAGENT, USER_AGENT)
+
+            content = c.get(url)
+
+            c.close()
+
+            doc = BeautifulSoup(content.decode("utf-8"), "lxml")
 
             log.debug("Checking if gallery is available, green button")
             if not self._is_gallery_available(doc):
@@ -403,27 +406,61 @@ class DescrambleDownloader:
 
             log.info(f'Downloading "{chapter_id}" manga.')
 
-            # Needed for cookies
-            read_resp = self.session.get(f"{url}/read/page/1", timeout=self.timeout)
-            if "You do not have access to this content." in read_resp.text:
+            c = curl.Curl(
+                f"{url}/read",
+                (
+                    "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language: en-US,en;q=0.5",
+                    "Sec-GPC: 1",
+                    f"Referer: {url}",
+                    "Upgrade-Insecure-Requests: 1",
+                    "Sec-Fetch-Dest: document",
+                    "Sec-Fetch-Mode: navigate",
+                    "Sec-Fetch-Site: same-origin",
+                    "Sec-Fetch-User: ?1",
+                    "Priority: u=0, i",
+                )
+            )
+            c.set_timeout(self.timeout)
+            c.set_option(pycurl.COOKIEFILE, self.cookies_file)   
+            c.set_option(pycurl.COOKIEJAR, self.cookies_file)    
+            c.set_option(pycurl.USERAGENT, USER_AGENT)
+
+            read_content = c.get(f"{url}/read")
+
+            c.close()
+            
+            if "You do not have access to this content." in read_content.decode("utf-8"):
                 log.info(f"You do not have access to this content: {url}")
                 urls_processed += 1
                 continue
 
-            api_resp = self.session.get(
+            c = curl.Curl(
                 f"{API_URL}/hentai/{chapter_id}/read",
-                timeout=self.timeout,
-                headers={
-                    "Accept": "*/*",
-                    "Sec-Fetch-Dest": "empty",
-                    "Sec-Fetch-Mode": "cors",
-                    "Sec-Fetch-Site": "same-site",
-                },
+                (
+                    "Accept: */*",
+                    "Accept-Language: en-US,en;q=0.5",
+                    f"Referer: {BASE_URL}/",
+                    f"Origin: {BASE_URL}",
+                    "Sec-GPC: 1",
+                    "Sec-Fetch-Dest: empty",
+                    "Sec-Fetch-Mode: cors",
+                    "Sec-Fetch-Site: same-site",
+                    "Priority: u=4",
+                )
             )
+            c.set_timeout(self.timeout)
+            c.set_option(pycurl.COOKIEFILE, self.cookies_file)
+            c.set_option(pycurl.COOKIEJAR, self.cookies_file)  
+            c.set_option(pycurl.USERAGENT, USER_AGENT)
+
+            api_content = c.get(f"{API_URL}/hentai/{chapter_id}/read")
+
+            c.close()
 
             try:
-                api_data = api_resp.json()
-            except requests.exceptions.JSONDecodeError:
+                api_data = json.loads(api_content)
+            except json.decoder.JSONDecodeError:
                 log.info(f"Failed to decode JSON: {url}")
                 urls_processed += 1
                 continue
@@ -445,11 +482,25 @@ class DescrambleDownloader:
                     json.dump(api_data, f, indent=True, ensure_ascii=False)
 
             keys: dict[str, list[int]] = {}
+
             if "key_hash" in api_data:
+                jar = cookiejar.MozillaCookieJar(self.cookies_file)
+                jar.load()
+
+                fakku_zid = None
+                
+                for cookie in jar:
+                    if cookie.domain == ".fakku.net" and cookie.name == "fakku_zid":
+                        fakku_zid = cookie.value
+                        break
+
+                if fakku_zid is None:
+                    log.error("Failed to retrieve fakku_zid cookie for descrambling pages")
+                    urls_processed += 1
+                    continue
+
                 data = decode_xor_cipher(
-                    calculate_decryption_key(
-                        api_data["key_hash"], self.session.cookies.get("fakku_zid")
-                    ),
+                    calculate_decryption_key(api_data["key_hash"], fakku_zid),
                     b64decode(api_data["key_data"]),
                 ).decode("utf-8")
                 keys = json.loads(data)
