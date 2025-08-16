@@ -74,34 +74,34 @@ def main():
         "--nozip",
         dest="zip",
         action="store_false",
-        help=f"By default this program creates a CBZ file containing the images as an output. \
+        help="By default this program creates a CBZ file containing the images as an output. \
                 Setting this creates a folder instead.",
     )
     argparser.add_argument(
         "--nooptimize",
         dest="optimize",
         action="store_false",
-        help=f"By default this program optimizes images losslessly with pingo (https://css-ig.net/pingo). \
+        help="By default this program optimizes images losslessly with pingo (https://css-ig.net/pingo). \
             Image optimization is disabled if this is set, or if pingo is not in PATH.",
     )
     argparser.add_argument(
         "--DEBUG",
         dest="debug",
         action="store_true",
-        help=f"Run in debug mode, saves logs in debug.log file. Default false.",
+        help="Run in debug mode, saves logs in debug.log file. Default false.",
     )
     argparser.add_argument(
         "--nometa",
         dest="metadata",
         action="store_false",
-        help=f"By default this program keep gallery metadata in info.json file inside directory/archive. 3-4 parsers\
+        help="By default this program keep gallery metadata in info.json file inside directory/archive. 3-4 parsers\
                 Setting this disables metadata file creation.",
     )
     argparser.add_argument(
         "--basic_metadata",
         dest="basic_metadata",
         action="store_true",
-        help=f"Store only basic info in metadata info.json file. \
+        help="Store only basic info in metadata info.json file. \
          no parser, fast, -Magazine -Event -Circle -Price -Related -Chapters -Collections",
     )
     argparser.add_argument(
@@ -145,7 +145,7 @@ def main():
 
     log = logging.getLogger()
     if args.debug:
-        log.debug(f"Version: %s", __version__)
+        log.debug("Version: %s", __version__)
         log.debug("Python %s - %s", sys.version, sys.platform)
         log.debug(sys.argv)
         log.debug(args)

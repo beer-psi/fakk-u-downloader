@@ -345,7 +345,7 @@ class DescrambleDownloader:
         else:
             artist = metadata["Artist"]
 
-        doc = E.ComicInfo(
+        doc: lxml.etree.Element = E.ComicInfo(
             E.Title(metadata["Title"]),
             E.Penciller(artist),
             E.Summary(metadata["Description"]),
