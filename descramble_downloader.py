@@ -1,5 +1,4 @@
 import concurrent.futures
-import contextlib
 import json
 import logging
 import os
@@ -11,18 +10,29 @@ from concurrent.futures import ThreadPoolExecutor
 from http import cookiejar
 from io import BytesIO
 from math import ceil
-import threading
 from time import sleep
 
-import curl
+import curl_cffi
 import lxml.builder
 import lxml.etree
-import pycurl
 from bs4 import BeautifulSoup
 from PIL import Image
 from tqdm import tqdm
 
-from consts import *
+from consts import (
+    BASE_URL,
+    LANG_MAP,
+    API_URL,
+    URLS_FILE,
+    DONE_FILE,
+    COOKIES_FILE,
+    ROOT_RESPONSE_DIR,
+    ROOT_MANGA_DIR,
+    TIMEOUT,
+    WAIT,
+    ZIP,
+    OPTIMIZE,
+)
 from utils import (
     append_images,
     calculate_decryption_key,
@@ -83,9 +93,20 @@ class DescrambleDownloader:
                 log.warning("Pingo/ECT not found, disabling optimization")
                 self.optimize = None
 
-        self.cookies_file = cookies_file
-        self.proxy = proxy
-        self._cookies_lock = threading.Lock()
+        cookies = cookiejar.MozillaCookieJar(cookies_file)
+        cookies.load()
+
+        self.session = curl_cffi.Session(
+            cookies=cookies, proxy=proxy, impersonate="chrome"
+        )
+        self.session.headers.update(
+            {
+                "Origin": BASE_URL,
+                "Referer": f"{BASE_URL}/",
+                "Accept-Language": "en-US,en;q=0.5",
+                "DNT": "1",
+            }
+        )
 
     def get_page_metadata(self, doc: BeautifulSoup) -> OrderedDict:
         metadata = OrderedDict()
@@ -236,32 +257,21 @@ class DescrambleDownloader:
         url: str,
         key: list[int] | None = None,
     ) -> tuple[bytes, str, bytes, str]:
-        with self._cookies_lock, contextlib.closing(
-            curl.Curl(
-                url,
-                (
-                    "Accept: image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
-                    "Accept-Language: en-US,en;q=0.5",
-                    "Sec-GPC: 1",
-                    "Connection: keep-alive",
-                    f"Referer: {BASE_URL}/",
-                    "Sec-Fetch-Dest: image",
-                    "Sec-Fetch-Mode: no-cors",
-                    "Sec-Fetch-Site: same-site",
-                    "Priority: u=5, i",
-                    "TE: trailers",
-                )
-            )
-        ) as c:
-            c.set_timeout(self.timeout)
-            c.set_option(pycurl.COOKIEFILE, self.cookies_file)
-            c.set_option(pycurl.COOKIEJAR, self.cookies_file)
-            c.set_option(pycurl.USERAGENT, USER_AGENT)
-            c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
-            c.set_option(pycurl.ACCEPT_ENCODING, "")
-            c.set_option(pycurl.PROXY, self.proxy)
+        resp = self.session.get(
+            url,
+            headers={
+                "accept": "image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
+                "sec-gpc": "1",
+                "connection": "keep-alive",
+                "sec-fetch-dest": "image",
+                "sec-fetch-mode": "no-cors",
+                "sec-fetch-site": "same-site",
+                "priority": "u=5, i",
+                "te": "trailers",
+            },
+        )
 
-            content = c.get(url)
+        content = resp.content
 
         with Image.open(BytesIO(content)) as image:
             if image.format is None:
@@ -359,7 +369,9 @@ class DescrambleDownloader:
         if "Hentai" in metadata["Tags"] or "Ecchi" in metadata["Tags"]:
             doc.append(E.AgeRating("R18+"))
 
-        return b'<?xml version="1.0" encoding="utf-8"?>\n' + lxml.etree.tostring(doc, pretty_print=True)
+        return b'<?xml version="1.0" encoding="utf-8"?>\n' + lxml.etree.tostring(
+            doc, pretty_print=True
+        )
 
     def load_all(self):
         log.debug("Starting main downloader function")
@@ -373,36 +385,23 @@ class DescrambleDownloader:
         for url in self.urls:
             log.info(url)
 
-            with self._cookies_lock, contextlib.closing(
-                curl.Curl(
-                    url,
-                    (
-                        "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                        "Accept-Language: en-US,en;q=0.5",
-                        "Sec-GPC: 1",
-                        "Connection: keep-alive",
-                        f"Referer: {BASE_URL}/",
-                        "Upgrade-Insecure-Requests: 1",
-                        "Sec-Fetch-Dest: document",
-                        "Sec-Fetch-Mode: navigate",
-                        "Sec-Fetch-Site: same-origin",
-                        "Sec-Fetch-User: ?1",
-                        "Priority: u=0, i",
-                        "TE: trailers",
-                    )
-                )
-            ) as c:
-                c.set_timeout(self.timeout)
-                c.set_option(pycurl.COOKIEFILE, self.cookies_file)
-                c.set_option(pycurl.COOKIEJAR, self.cookies_file)
-                c.set_option(pycurl.USERAGENT, USER_AGENT)
-                c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
-                c.set_option(pycurl.ACCEPT_ENCODING, "")
-                c.set_option(pycurl.PROXY, self.proxy)
+            resp = self.session.get(
+                url,
+                headers={
+                    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "sec-gpc": "1",
+                    "connection": "keep-alive",
+                    "upgrade-insecure-requests": "1",
+                    "sec-fetch-dest": "document",
+                    "sec-fetch-mode": "navigate",
+                    "sec-fetch-site": "same-origin",
+                    "sec-fetch-user": "?1",
+                    "priority": "u=0, i",
+                    "te": "trailers",
+                },
+            )
 
-                content = c.get(url)
-
-            doc = BeautifulSoup(content.decode("utf-8"), "lxml")
+            doc = BeautifulSoup(resp.text, "lxml")
 
             log.debug("Checking if gallery is available, green button")
             if not self._is_gallery_available(doc):
@@ -420,70 +419,44 @@ class DescrambleDownloader:
 
             log.info(f'Downloading "{chapter_id}" manga.')
 
-            with self._cookies_lock, contextlib.closing(
-                curl.Curl(
-                    f"{url}/read",
-                    (
-                        "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                        "Accept-Language: en-US,en;q=0.5",
-                        "Sec-GPC: 1",
-                        "Connection: keep-alive",
-                        f"Referer: {url}",
-                        "Upgrade-Insecure-Requests: 1",
-                        "Sec-Fetch-Dest: document",
-                        "Sec-Fetch-Mode: navigate",
-                        "Sec-Fetch-Site: same-origin",
-                        "Sec-Fetch-User: ?1",
-                        "Priority: u=0, i",
-                        "TE: trailers",
-                    )
-                )
-            ) as c:
-                c.set_timeout(self.timeout)
-                c.set_option(pycurl.COOKIEFILE, self.cookies_file)
-                c.set_option(pycurl.COOKIEJAR, self.cookies_file)
-                c.set_option(pycurl.USERAGENT, USER_AGENT)
-                c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
-                c.set_option(pycurl.ACCEPT_ENCODING, "")
-                c.set_option(pycurl.PROXY, self.proxy)
+            resp = self.session.get(
+                f"{url}/read",
+                headers={
+                    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "sec-gpc": "1",
+                    "connection": "keep-alive",
+                    "referer": url,
+                    "upgrade-insecure-requests": "1",
+                    "sec-fetch-dest": "document",
+                    "sec-fetch-mode": "navigate",
+                    "sec-fetch-site": "same-origin",
+                    "sec-fetch-user": "?1",
+                    "priority": "u=0, i",
+                    "te": "trailers",
+                },
+            )
 
-                read_content = c.get(f"{url}/read")
-
-            if "You do not have access to this content." in read_content.decode("utf-8"):
+            if "You do not have access to this content." in resp.text:
                 log.info(f"You do not have access to this content: {url}")
                 urls_processed += 1
                 continue
 
-            with self._cookies_lock, contextlib.closing(
-                curl.Curl(
-                    f"{API_URL}/hentai/{chapter_id}/read",
-                    (
-                        "Accept: */*",
-                        "Accept-Language: en-US,en;q=0.5",
-                        f"Referer: {BASE_URL}/",
-                        f"Origin: {BASE_URL}",
-                        "Sec-GPC: 1",
-                        "Connection: keep-alive",
-                        "Sec-Fetch-Dest: empty",
-                        "Sec-Fetch-Mode: cors",
-                        "Sec-Fetch-Site: same-site",
-                        "Priority: u=4",
-                        "TE: trailers",
-                    )
-                )
-            ) as c:
-                c.set_timeout(self.timeout)
-                c.set_option(pycurl.COOKIEFILE, self.cookies_file)
-                c.set_option(pycurl.COOKIEJAR, self.cookies_file)
-                c.set_option(pycurl.USERAGENT, USER_AGENT)
-                c.set_option(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_2TLS)
-                c.set_option(pycurl.ACCEPT_ENCODING, "")
-                c.set_option(pycurl.PROXY, self.proxy)
-
-                api_content = c.get(f"{API_URL}/hentai/{chapter_id}/read")
+            resp = self.session.get(
+                f"{API_URL}/hentai/{chapter_id}/read",
+                headers={
+                    "accept": "*/*",
+                    "sec-gpc": "1",
+                    "connection": "keep-alive",
+                    "sec-fetch-dest": "empty",
+                    "sec-fetch-mode": "cors",
+                    "sec-fetch-site": "same-site",
+                    "priority": "u=4",
+                    "te": "trailers",
+                },
+            )
 
             try:
-                api_data = json.loads(api_content)
+                api_data = resp.json()
             except json.decoder.JSONDecodeError:
                 log.info(f"Failed to decode JSON: {url}")
                 urls_processed += 1
@@ -508,18 +481,14 @@ class DescrambleDownloader:
             keys: dict[str, list[int]] = {}
 
             if "key_hash" in api_data:
-                jar = cookiejar.MozillaCookieJar(self.cookies_file)
-                jar.load()
-
-                fakku_zid = None
-
-                for cookie in jar:
-                    if cookie.domain == ".fakku.net" and cookie.name == "fakku_zid":
-                        fakku_zid = cookie.value
-                        break
+                fakku_zid = self.session.cookies.get(
+                    name="fakku_zid", domain=".fakku.net"
+                )
 
                 if fakku_zid is None:
-                    log.error("Failed to retrieve fakku_zid cookie for descrambling pages")
+                    log.error(
+                        "Failed to retrieve fakku_zid cookie for descrambling pages"
+                    )
                     urls_processed += 1
                     continue
 
@@ -541,19 +510,24 @@ class DescrambleDownloader:
                 else:
                     spreads[right] = (left, right)
 
-            with tqdm(
-                total=len(api_data["pages"].values()),
-                desc="Working...",
-                unit="page",
-                leave=False,
-                position=0,
-            ) as pbar, ThreadPoolExecutor(max_workers=5) as executor:
+            with (
+                tqdm(
+                    total=len(api_data["pages"].values()),
+                    desc="Working...",
+                    unit="page",
+                    leave=False,
+                    position=0,
+                ) as pbar,
+                ThreadPoolExecutor(max_workers=5) as executor,
+            ):
 
                 def worker(idx: str, page: dict):
                     num = page["page"]
                     image_url = page["image"]
 
-                    raw, raw_ext, image, ext = self._download_page(image_url, keys.get(idx))
+                    raw, raw_ext, image, ext = self._download_page(
+                        image_url, keys.get(idx)
+                    )
 
                     raw_filename = f"{num:0{padd}d}.{raw_ext}"
                     filename = f"{num:0{padd}d}.{ext}"
@@ -582,7 +556,11 @@ class DescrambleDownloader:
                 left, right = spread
 
                 if left not in api_data["pages"] or right not in api_data["pages"]:
-                    log.warning("Requested to join non-existent pages (%s, %s), ignoring", left, right)
+                    log.warning(
+                        "Requested to join non-existent pages (%s, %s), ignoring",
+                        left,
+                        right,
+                    )
                     continue
 
                 fin_img = [
@@ -609,15 +587,11 @@ class DescrambleDownloader:
                 )
                 combo.save(destination_file_spread)
 
-                api_data["pages"][left][
-                    "image_path"
-                ] = destination_file_l = os.path.join(
-                    manga_folder, f"{nam_l}b.{ext_l}"
+                api_data["pages"][left]["image_path"] = destination_file_l = (
+                    os.path.join(manga_folder, f"{nam_l}b.{ext_l}")
                 )
-                api_data["pages"][right][
-                    "image_path"
-                ] = destination_file_r = os.path.join(
-                    manga_folder, f"{nam_r}c.{ext_r}"
+                api_data["pages"][right]["image_path"] = destination_file_r = (
+                    os.path.join(manga_folder, f"{nam_r}c.{ext_r}")
                 )
 
                 shutil.move(im_l, destination_file_l)
@@ -639,13 +613,7 @@ class DescrambleDownloader:
             elif self.optimize == "ect":
                 log.info("Optimizing images using ect")
                 subprocess.call(
-                    [
-                        "ect",
-                        "--mt-file",
-                        "--mt-deflate",
-                        "--strict",
-                        manga_folder
-                    ],
+                    ["ect", "--mt-file", "--mt-deflate", "--strict", manga_folder],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
