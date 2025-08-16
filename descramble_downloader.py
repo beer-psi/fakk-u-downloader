@@ -93,11 +93,11 @@ class DescrambleDownloader:
                 log.warning("Pingo/ECT not found, disabling optimization")
                 self.optimize = None
 
-        cookies = cookiejar.MozillaCookieJar(cookies_file)
-        cookies.load()
+        self.cookie_jar = cookiejar.MozillaCookieJar(cookies_file)
+        self.cookie_jar.load()
 
         self.session = curl_cffi.Session(
-            cookies=cookies, proxy=proxy, impersonate="chrome"
+            cookies=self.cookie_jar, proxy=proxy, impersonate="chrome"
         )
         self.session.headers.update(
             {
@@ -653,4 +653,6 @@ class DescrambleDownloader:
             urls_processed += 1
             log.debug("Finished parsing page")
             sleep(self.wait)
+
         log.info(f"Urls processed: {urls_processed}")
+        self.cookie_jar.save()
