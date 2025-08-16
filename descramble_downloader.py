@@ -103,7 +103,6 @@ class DescrambleDownloader:
             {
                 "Origin": BASE_URL,
                 "Referer": f"{BASE_URL}/",
-                "Accept-Language": "en-US,en;q=0.5",
                 "DNT": "1",
             }
         )
@@ -261,13 +260,10 @@ class DescrambleDownloader:
             url,
             headers={
                 "accept": "image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
-                "sec-gpc": "1",
                 "connection": "keep-alive",
                 "sec-fetch-dest": "image",
                 "sec-fetch-mode": "no-cors",
                 "sec-fetch-site": "same-site",
-                "priority": "u=5, i",
-                "te": "trailers",
             },
         )
 
@@ -389,15 +385,11 @@ class DescrambleDownloader:
                 url,
                 headers={
                     "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "sec-gpc": "1",
                     "connection": "keep-alive",
-                    "upgrade-insecure-requests": "1",
                     "sec-fetch-dest": "document",
                     "sec-fetch-mode": "navigate",
                     "sec-fetch-site": "same-origin",
                     "sec-fetch-user": "?1",
-                    "priority": "u=0, i",
-                    "te": "trailers",
                 },
             )
 
@@ -423,16 +415,11 @@ class DescrambleDownloader:
                 f"{url}/read",
                 headers={
                     "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "sec-gpc": "1",
-                    "connection": "keep-alive",
                     "referer": url,
-                    "upgrade-insecure-requests": "1",
                     "sec-fetch-dest": "document",
                     "sec-fetch-mode": "navigate",
                     "sec-fetch-site": "same-origin",
                     "sec-fetch-user": "?1",
-                    "priority": "u=0, i",
-                    "te": "trailers",
                 },
             )
 
@@ -445,13 +432,9 @@ class DescrambleDownloader:
                 f"{API_URL}/hentai/{chapter_id}/read",
                 headers={
                     "accept": "*/*",
-                    "sec-gpc": "1",
-                    "connection": "keep-alive",
                     "sec-fetch-dest": "empty",
                     "sec-fetch-mode": "cors",
                     "sec-fetch-site": "same-site",
-                    "priority": "u=4",
-                    "te": "trailers",
                 },
             )
 
