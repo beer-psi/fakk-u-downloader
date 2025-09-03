@@ -71,7 +71,7 @@ class DescrambleDownloader:
         optimize=OPTIMIZE,
     ):
         self.done_file = done_file
-        self.urls = get_urls_list(urls_file, done_file)
+        self.urls, self.done_urls = get_urls_list(urls_file, done_file)
         self.root_manga_dir = root_manga_dir
         self.root_response_dir = root_response_dir
 
@@ -106,6 +106,12 @@ class DescrambleDownloader:
                 "DNT": "1",
             }
         )
+
+    def add_done_url(self, url: str):
+        self.done_urls.add(url)
+
+        with open(self.done_file, "a") as done_file_obj:
+            done_file_obj.write(f"{url}\n")
 
     def get_page_metadata(self, doc: BeautifulSoup) -> OrderedDict:
         metadata = OrderedDict()
@@ -333,11 +339,12 @@ class DescrambleDownloader:
 
             return content, raw_ext, out_bytes.read(), "png"
 
-    def _is_gallery_available(self, doc) -> bool:
-        elem = doc.select_one('a[class^="button-green"]')
-        if elem is None or "Start Reading" not in elem.text:
-            return False
-        return True
+    def _is_gallery_available(self, doc) -> str | None:
+        for elem in doc.select('a[class^="button-green"]'):
+            if "Start Reading" in elem.text:
+                return elem["href"]
+
+        return None
 
     def _build_comicinfo_xml(self, metadata: dict) -> bytes:
         if isinstance(metadata["Artist"], list):
@@ -396,18 +403,32 @@ class DescrambleDownloader:
             doc = BeautifulSoup(resp.text, "lxml")
 
             log.debug("Checking if gallery is available, green button")
-            if not self._is_gallery_available(doc):
+
+            href = self._is_gallery_available(doc)
+
+            if href is None:
                 log.info(f"Gallery is not available: {url}")
                 urls_processed += 1
                 continue
 
             metadata = self.get_page_metadata(doc)
 
-            chapter_id = url.split("/")
-            if url.endswith("/"):
-                chapter_id = chapter_id[-2]
+            href_parts = href.split("/")
+
+            # /hentai/{chapter_id}/read
+            if href.endswith("/"):
+                chapter_id = href_parts[-3]
             else:
-                chapter_id = chapter_id[-1]
+                chapter_id = href_parts[-2]
+
+            if f"https://www.fakku.net/hentai/{chapter_id}" in self.done_urls:
+                log.info(
+                    "URL redirects to a done hentai: https://www.fakku.net/hentai/%s",
+                    chapter_id,
+                )
+                urls_processed += 1
+                self.add_done_url(url)
+                continue
 
             log.info(f'Downloading "{chapter_id}" manga.')
 
@@ -631,9 +652,9 @@ class DescrambleDownloader:
             if not self.keep_response:
                 shutil.rmtree(response_folder)
 
-            with open(self.done_file, "a") as done_file_obj:
-                done_file_obj.write(f"{url}\n")
+            self.add_done_url(url)
             urls_processed += 1
+
             log.debug("Finished parsing page")
             sleep(self.wait)
 

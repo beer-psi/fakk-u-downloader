@@ -27,13 +27,13 @@ def get_urls_list(urls_file, done_file):
         Urls from urls_file
     """
     log.debug("Parsing list of urls")
-    done = set()
+    done: set[str] = set()
     with open(done_file, "r") as donef:
         for line in donef:
             done.add(line.replace("\n", ""))
     log.debug(f"Done: {len(done)}")
 
-    urls = []
+    urls: list[str] = []
     with open(urls_file, "r") as f:
         for line in f:
             clean_line = line.replace("\n", "")
@@ -49,7 +49,7 @@ def get_urls_list(urls_file, done_file):
     if len(urls) == 0:
         log.info("Nothing to rip")
         exit()
-    return urls
+    return urls, done
 
 
 def fix_filename(filename):
